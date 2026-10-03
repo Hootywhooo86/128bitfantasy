@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { keyChecks, redact, reportText, yahooCheck } from './diagnose';
+import { keyChecks, redact, reportText, yahooCheck, yahooPermissionHint } from './diagnose';
 import { exchangeYahooCode, tokenRequestParts, yahooAuthorizeUrl } from './oauth';
 import { challengeFor } from './pkce';
 import userLeagues from './fixtures/userLeagues.json';
@@ -93,5 +93,28 @@ describe('yahoo check', () => {
   it('says to sign in first when there is no login', async () => {
     const steps = await yahooCheck(null, ID, '');
     expect(steps.at(-1)).toMatchObject({ step: 'Signed in', ok: false });
+  });
+});
+
+describe('missing Fantasy Sports permission', () => {
+  const body = '{"error":{"description":"This application is not authorized to perform this action."}}';
+
+  it('the check names the fix', async () => {
+    vi.stubGlobal('fetch', async () => new Response(body, { status: 403, headers: { 'content-type': 'application/json' } }));
+    const steps = await yahooCheck(conn(), ID, '');
+    expect(steps.at(-1)).toMatchObject({ step: 'How to fix', ok: false });
+    expect(steps.at(-1)?.detail).toMatch(/Fantasy Sports/);
+  });
+
+  it('only for that 403', () => {
+    expect(yahooPermissionHint(403, body)).toMatch(/API Permissions/);
+    expect(yahooPermissionHint(401, body)).toBeNull();
+    expect(yahooPermissionHint(403, '{"error":"rate limited"}')).toBeNull();
+  });
+
+  it('the normal sync error says it too', async () => {
+    const { getJson } = await import('../http');
+    vi.stubGlobal('fetch', async () => new Response(body, { status: 403 }));
+    await expect(getJson('yahoo', 'https://x')).rejects.toThrow(/missing the Fantasy Sports permission/);
   });
 });

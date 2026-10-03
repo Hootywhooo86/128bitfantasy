@@ -41,7 +41,15 @@ async function fetchOnceMore(url: string, opts: GetOpts, provider: ProviderId): 
 export async function getJson<T>(provider: ProviderId, url: string, opts: GetOpts = {}): Promise<T> {
   const res = await fetchOnceMore(url, opts, provider);
   if (!res.ok) {
-    throw new ProviderError(provider, statusMessage(provider, res.status), res.status);
+    let message = statusMessage(provider, res.status);
+    if (provider === 'yahoo' && res.status === 403) {
+      const body = await res.text().catch(() => '');
+      if (/not authorized/i.test(body)) {
+        message =
+          'Yahoo signed you in, but your Yahoo app is missing the Fantasy Sports permission. At developer.yahoo.com/apps → API Permissions → tick Fantasy Sports → Save, then sign in again.';
+      }
+    }
+    throw new ProviderError(provider, message, res.status);
   }
   const text = await res.text();
   if (!text || text === 'null') {

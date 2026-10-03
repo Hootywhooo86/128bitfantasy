@@ -53,7 +53,7 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
       "Yahoo's API can set lineups and make moves, but this app only asks for read access and never changes anything.",
     steps: [
       'Open Create App below and sign in to Yahoo.',
-      'Redirect URI: oob. API permissions: Fantasy Sports → Read. Public or Confidential both work.',
+      'Redirect URI: oob. API permissions: tick Fantasy Sports → Read (or Read/Write) — without it sign-in works but leagues are refused. Public or Confidential both work.',
       'Copy the Client ID here. Confidential app: also the Client Secret. Public app: leave the secret empty.',
       'Tap SIGN IN WITH YAHOO, approve, and paste the code Yahoo shows you. Stuck? RUN YAHOO CHECK shows which step fails.',
     ],

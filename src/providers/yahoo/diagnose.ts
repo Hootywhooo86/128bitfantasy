@@ -76,6 +76,8 @@ export async function yahooCheck(conn: YahooConn | null, clientId: string, clien
     const snippet = redact(text.replace(/\s+/g, ' ').slice(0, 220), secrets);
     if (!res.ok || !parsed) {
       steps.push({ step: 'Read leagues', ok: false, detail: `HTTP ${res.status} (${type}): ${snippet}` });
+      const fix = yahooPermissionHint(res.status, text);
+      if (fix) steps.push({ step: 'How to fix', ok: false, detail: fix });
       return steps;
     }
     steps.push({ step: 'Read leagues', ok: true, detail: `HTTP ${res.status}` });
@@ -95,4 +97,14 @@ export async function yahooCheck(conn: YahooConn | null, clientId: string, clien
 
 export function reportText(steps: CheckStep[]): string {
   return ['128BIT FANTASY — Yahoo check', ...steps.map((s) => `${s.ok ? 'OK ' : 'XX '} ${s.step}: ${s.detail}`)].join('\n');
+}
+
+/**
+ * Yahoo answers 403 "This application is not authorized to perform this
+ * action" when the app was registered without the Fantasy Sports permission —
+ * sign-in works, data does not. The fix is on developer.yahoo.com, not here.
+ */
+export function yahooPermissionHint(status: number, body: string): string | null {
+  if (status !== 403 || !/not authorized/i.test(body)) return null;
+  return 'Your Yahoo app is missing the Fantasy Sports permission. At developer.yahoo.com/apps open the app → API Permissions → tick Fantasy Sports (Read, or Read/Write) → Save. Then tap SIGN IN WITH YAHOO again — the current login was issued without it.';
 }
