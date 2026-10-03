@@ -46,7 +46,7 @@ export async function getJson<T>(provider: ProviderId, url: string, opts: GetOpt
       const body = await res.text().catch(() => '');
       if (/not authorized/i.test(body)) {
         message =
-          'Yahoo signed you in, but your Yahoo app is missing the Fantasy Sports permission. At developer.yahoo.com/apps → API Permissions → tick Fantasy Sports → Save, then sign in again.';
+          'Yahoo signed you in but refused fantasy data for this login. Tap SIGN IN WITH YAHOO again for a fresh code (logins from before alpha.6 lacked the Fantasy Sports permission), and check Fantasy Sports is ticked on your Yahoo app.';
       }
     }
     throw new ProviderError(provider, message, res.status);

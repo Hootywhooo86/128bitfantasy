@@ -24,12 +24,21 @@ export const YAHOO_REDIRECT = 'oob';
 
 export type YahooTokens = { accessToken: string; refreshToken: string; expiresAt: number };
 
+/**
+ * The permission the login asks for. Without it, an app that also has
+ * OpenID permissions gets a login that signs in fine but is refused fantasy
+ * data (403 "This application is not authorized"). fspt-r = Fantasy Sports
+ * read; fspt-w would add lineup changes.
+ */
+export const YAHOO_SCOPE = 'fspt-r';
+
 /** The sign-in link. With a verifier (public apps), PKCE rides along. */
 export function yahooAuthorizeUrl(clientId: string, verifier?: string | null): string {
   const p = new URLSearchParams({
     client_id: clientId.trim(),
     redirect_uri: YAHOO_REDIRECT,
     response_type: 'code',
+    scope: YAHOO_SCOPE,
     language: 'en-us',
   });
   if (verifier) {

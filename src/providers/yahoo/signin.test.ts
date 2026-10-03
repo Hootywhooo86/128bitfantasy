@@ -38,6 +38,9 @@ describe('yahoo sign-in, both app types', () => {
     expect(u.searchParams.get('code_challenge')).toBe(challengeFor(v));
     expect(u.searchParams.get('code_challenge_method')).toBe('S256');
     expect(new URL(yahooAuthorizeUrl('id')).searchParams.get('code_challenge')).toBeNull();
+    // The login must ask for Fantasy Sports, or Yahoo grants OpenID only.
+    expect(u.searchParams.get('scope')).toBe('fspt-r');
+    expect(new URL(yahooAuthorizeUrl('id')).searchParams.get('scope')).toBe('fspt-r');
   });
 
   it('sends the verifier with the code and reads the tokens', async () => {
@@ -115,6 +118,6 @@ describe('missing Fantasy Sports permission', () => {
   it('the normal sync error says it too', async () => {
     const { getJson } = await import('../http');
     vi.stubGlobal('fetch', async () => new Response(body, { status: 403 }));
-    await expect(getJson('yahoo', 'https://x')).rejects.toThrow(/missing the Fantasy Sports permission/);
+    await expect(getJson('yahoo', 'https://x')).rejects.toThrow(/refused fantasy data/);
   });
 });
