@@ -28,6 +28,27 @@ export type ProviderInfo = {
 };
 
 export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
+  bit128: {
+    id: 'bit128',
+    label: '128BIT LEAGUES',
+    apiAccess: 'read-write',
+    appAccess: 'read-write',
+    official: true,
+    connectWith: 'Your league\'s Supabase project',
+    accessNote:
+      'Leagues hosted by this app in your own free Supabase project. Draft, lineups and pickups happen right here; scores come from the NHL and Sleeper stat feeds.',
+    steps: [
+      'Commissioner: make a free project at supabase.com, open SQL Editor, paste supabase/schema.sql from this app\'s GitHub, Run.',
+      'Authentication → Sign In / Providers → turn on "Allow anonymous sign-ins" (quick sign-in).',
+      'Project Settings → API Keys: copy the Project URL and the publishable (anon) key into the app, and send both to your league.',
+      'Everyone: paste the same URL and key, sign in, then CREATE or JOIN with the 6-letter code.',
+    ],
+    help: [
+      { label: 'Create a Supabase project', url: 'https://supabase.com/dashboard/projects' },
+      { label: 'Setup guide (schema.sql)', url: 'https://github.com/hootywhooo86/128bitfantasy/blob/main/supabase/README.md' },
+      { label: 'Supabase anonymous sign-ins', url: 'https://supabase.com/docs/guides/auth/auth-anonymous' },
+    ],
+  },
   sleeper: {
     id: 'sleeper',
     label: 'Sleeper',

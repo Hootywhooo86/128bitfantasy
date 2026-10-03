@@ -4,6 +4,7 @@
  * The adapters themselves are pure (fetch in, normalized models out); this is
  * the one place that hands them the player caches and the token saver.
  */
+import { hostedAdapter } from '@/lib/leagues/adapter';
 import { saveConnection } from '@/lib/storage/connections';
 import { fantraxPlayers, mflPlayers, sleeperPlayers } from '@/lib/storage/player-cache';
 import type { ProviderId } from '@/src/sports/models';
@@ -24,10 +25,14 @@ export const ADAPTERS: Record<ProviderId, ProviderAdapter<never>> = {
   fleaflicker: fleaflickerAdapter,
   fantrax: createFantraxAdapter(fantraxPlayers),
   mfl: createMflAdapter(mflPlayers),
+  bit128: hostedAdapter,
 };
 
-/** In the order the Leagues screen lists them. */
+/** Outside fantasy sites, in the order the sign-in list shows them. */
 export const PROVIDER_ORDER: ProviderId[] = ['sleeper', 'yahoo', 'espn', 'mfl', 'fantrax', 'fleaflicker'];
+
+/** Everything, including leagues this app hosts itself. */
+export const ALL_PROVIDERS: ProviderId[] = ['bit128', ...PROVIDER_ORDER];
 
 export function adapterFor<C extends Connection>(c: C): ProviderAdapter<C> {
   return ADAPTERS[c.provider] as unknown as ProviderAdapter<C>;

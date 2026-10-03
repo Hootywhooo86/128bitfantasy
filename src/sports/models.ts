@@ -19,7 +19,8 @@ export const SPORTS: { id: Sport; label: string }[] = [
   { id: 'nhl', label: 'NHL' },
 ];
 
-export type ProviderId = 'sleeper' | 'yahoo' | 'fantrax' | 'espn' | 'fleaflicker' | 'mfl';
+/** 'bit128' is 128BIT LEAGUES — leagues hosted by this app itself. */
+export type ProviderId = 'sleeper' | 'yahoo' | 'fantrax' | 'espn' | 'fleaflicker' | 'mfl' | 'bit128';
 
 export type Record3 = { wins: number; losses: number; ties: number };
 

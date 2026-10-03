@@ -101,6 +101,8 @@ export default function Account() {
         if (!ids.length && !f.userSecretId.trim()) throw new Error('Enter a league ID or your User Secret ID.');
         return { provider, userSecretId: f.userSecretId.trim() || null, leagueIds: ids };
       }
+      case 'bit128':
+        throw new Error('Set up 128BIT LEAGUES from Settings → 128BIT LEAGUES.');
       case 'yahoo': {
         const clientId = sanitizeApiKey(f.clientId);
         // Empty for a Public app — it signs in with PKCE instead.

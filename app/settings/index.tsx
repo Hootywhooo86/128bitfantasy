@@ -18,7 +18,7 @@ import { colors, fonts, themedStyles } from '@/lib/theme';
 import { checkForUpdate, installedReleaseTag, type UpdateCheck } from '@/lib/update-check';
 import type { HealthReport } from '@/src/providers/health';
 import { accessLabel, PROVIDER_INFO } from '@/src/providers/info';
-import { PROVIDER_ORDER } from '@/src/providers/registry';
+import { ALL_PROVIDERS, PROVIDER_ORDER } from '@/src/providers/registry';
 import type { Connection } from '@/src/providers/types';
 import { ageLabel, cachedLeagues, lastSyncedAt, syncLeagues } from '@/src/sports/hub';
 import type { League } from '@/src/sports/models';
@@ -122,6 +122,15 @@ export default function Settings() {
 
   return (
     <Screen section="Settings" back right="none">
+      <Label>128BIT LEAGUES · RUN YOUR OWN</Label>
+      <MenuRow
+        icon={signedIn.has('bit128') ? '●' : '○'}
+        name="128BIT LEAGUES"
+        sub="Host your own hockey or football league with friends: draft, lineups, live scoring. Read & write."
+        value={signedIn.has('bit128') ? `${leagues.filter((l) => l.provider === 'bit128').length} league(s)` : 'Set up'}
+        onPress={() => router.push('/hosted')}
+      />
+
       <Label>SIGN IN · YOUR FANTASY ACCOUNTS</Label>
       {PROVIDER_ORDER.map((p) => {
         const info = PROVIDER_INFO[p];
@@ -262,7 +271,7 @@ export default function Settings() {
           without warning.
         </Text>
         {health
-          ? PROVIDER_ORDER.map((p) => {
+          ? ALL_PROVIDERS.map((p) => {
               const h = health.results[p];
               if (!h) return null;
               return (

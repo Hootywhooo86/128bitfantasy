@@ -8,7 +8,7 @@ import type { Connection } from '@/src/providers/types';
 import type { ProviderId } from '@/src/sports/models';
 import { deleteSecret, getSecret, setSecret, SecureStoreError } from './secure';
 
-const PROVIDERS: ProviderId[] = ['sleeper', 'yahoo', 'fantrax', 'espn', 'fleaflicker', 'mfl'];
+const PROVIDERS: ProviderId[] = ['bit128', 'sleeper', 'yahoo', 'fantrax', 'espn', 'fleaflicker', 'mfl'];
 const key = (p: ProviderId) => `bitfantasy_conn_${p}`;
 
 export async function getConnection<P extends ProviderId>(

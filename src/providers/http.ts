@@ -63,7 +63,7 @@ export async function getJson<T>(provider: ProviderId, url: string, opts: GetOpt
 }
 
 export function providerLabel(p: ProviderId): string {
-  return { sleeper: 'Sleeper', yahoo: 'Yahoo', fantrax: 'Fantrax', espn: 'ESPN', fleaflicker: 'Fleaflicker', mfl: 'MyFantasyLeague' }[p];
+  return { sleeper: 'Sleeper', yahoo: 'Yahoo', fantrax: 'Fantrax', espn: 'ESPN', fleaflicker: 'Fleaflicker', mfl: 'MyFantasyLeague', bit128: '128BIT LEAGUES' }[p];
 }
 
 export function statusMessage(p: ProviderId, status: number): string {

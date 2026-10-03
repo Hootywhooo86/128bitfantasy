@@ -33,6 +33,12 @@ export type Connection =
     }
   | { provider: 'fleaflicker'; email: string; sport: Sport[] }
   | {
+      /** 128BIT LEAGUES: the league's Supabase project. The key is the public (anon) one. */
+      provider: 'bit128';
+      url: string;
+      anonKey: string;
+    }
+  | {
       provider: 'mfl';
       /** League id, plus your franchise id ("0004") if you know it. */
       leagues: { id: string; franchiseId: string | null }[];

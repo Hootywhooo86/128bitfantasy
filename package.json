@@ -21,6 +21,7 @@
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/silkscreen": "^0.4.2",
+    "@supabase/supabase-js": "^2.117.2",
     "expo": "~57.0.24",
     "expo-background-task": "~57.0.21",
     "expo-clipboard": "~57.0.2",
@@ -43,6 +44,7 @@
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
     "react-native-svg": "^15.15.5",
+    "react-native-url-polyfill": "^4.0.0",
     "react-native-web": "~0.21.0"
   },
   "devDependencies": {

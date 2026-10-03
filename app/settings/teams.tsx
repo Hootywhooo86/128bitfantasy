@@ -6,7 +6,7 @@ import { describeNetworkFailure } from '@/lib/net-errors';
 import { updatePrefs, usePrefs } from '@/lib/storage/prefs';
 import { colors, fonts, themedStyles } from '@/lib/theme';
 import { PROVIDER_INFO } from '@/src/providers/info';
-import { PROVIDER_ORDER } from '@/src/providers/registry';
+import { ALL_PROVIDERS } from '@/src/providers/registry';
 import { cachedLeagues, cachedSnapshot, fetchSnapshot } from '@/src/sports/hub';
 import type { League, Team } from '@/src/sports/models';
 import { leagueKey, pickTeam, toggleHidden, withMyTeam } from '@/src/sports/prefs';
@@ -54,7 +54,7 @@ export default function MyTeams() {
   return (
     <Screen section="My Teams" back right="none">
       <Note>Home only shows leagues where we know your team and the switch is on. Tap a league to change which team is yours.</Note>
-      {PROVIDER_ORDER.map((p) => {
+      {ALL_PROVIDERS.map((p) => {
         const list = (leagues ?? []).filter((l) => l.provider === p);
         if (!list.length) return null;
         return (

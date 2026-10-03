@@ -45,5 +45,8 @@ export function teamUrl(league: League, teamId: string | null): string {
       return `https://www.fleaflicker.com/${league.sport}/leagues/${id}${team ? `/teams/${team}` : ''}`;
     case 'mfl':
       return `https://www.myfantasyleague.com/${league.season}/home/${id}`;
+    case 'bit128':
+      // Hosted here: the lineup screen in this app.
+      return `bitfantasy://hosted/${id}/lineup`;
   }
 }

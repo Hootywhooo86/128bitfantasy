@@ -12,7 +12,7 @@ describe('api watch', () => {
   });
 
   it('probes every provider', () => {
-    expect(probes(2026).map((p) => p.provider).sort()).toEqual(['espn', 'fantrax', 'fleaflicker', 'mfl', 'sleeper', 'yahoo']);
+    expect(probes(2026).map((p) => p.provider).sort()).toEqual(['bit128', 'espn', 'fantrax', 'fleaflicker', 'mfl', 'sleeper', 'yahoo']);
   });
 
   it('calls a renamed field a change, not an outage', async () => {

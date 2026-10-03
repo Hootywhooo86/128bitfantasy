@@ -1,3 +1,4 @@
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, CardHead } from '@/components/ui';
@@ -12,7 +13,12 @@ import type { League } from '@/src/sports/models';
  * options, and one button to fix it in the provider's own app.
  */
 export function LineupCheck({ league, teamId, issues, mine }: { league: League; teamId: string; issues: LineupIssue[]; mine: boolean }) {
-  const open = () => Linking.openURL(teamUrl(league, teamId)).catch(() => undefined);
+  const router = useRouter();
+  const hosted = league.provider === 'bit128';
+  const open = () =>
+    hosted
+      ? router.push({ pathname: '/hosted/[id]/lineup', params: { id: league.id } })
+      : Linking.openURL(teamUrl(league, teamId)).catch(() => undefined);
   const where = providerLabel(league.provider);
 
   if (!issues.length) {
@@ -20,7 +26,7 @@ export function LineupCheck({ league, teamId, issues, mine }: { league: League; 
       <Card>
         <CardHead title="LINEUP CHECK" note="All clear" />
         <Text style={st.ok}>Every starter is healthy as far as {where} reports.</Text>
-        <FixButton label={`OPEN IN ${where.toUpperCase()} ↗`} onPress={open} quiet />
+        <FixButton label={hosted ? 'SET LINEUP' : `OPEN IN ${where.toUpperCase()} ↗`} onPress={open} quiet />
       </Card>
     ) : null;
   }
@@ -41,8 +47,8 @@ export function LineupCheck({ league, teamId, issues, mine }: { league: League; 
           </View>
         </View>
       ))}
-      {mine ? <FixButton label={`FIX IN ${where.toUpperCase()} ↗`} onPress={open} /> : null}
-      <Text style={st.note}>This app is read-only — the fix happens in {where}.</Text>
+      {mine ? <FixButton label={hosted ? 'FIX MY LINEUP' : `FIX IN ${where.toUpperCase()} ↗`} onPress={open} /> : null}
+      {hosted ? null : <Text style={st.note}>This app is read-only — the fix happens in {where}.</Text>}
     </Card>
   );
 }

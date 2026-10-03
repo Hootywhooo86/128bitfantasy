@@ -95,6 +95,13 @@ export function probes(season = new Date().getFullYear()): Probe[] {
       check: shape(['nflSchedule.matchup'], 'Export API answering'),
     },
     {
+      // 128BIT LEAGUES scoring rides on the NHL's own feed: today's scores
+      // (box scores share its game ids) must still list games with states.
+      provider: 'bit128',
+      url: 'https://api-web.nhle.com/v1/score/now',
+      check: shape(['games'], 'NHL scores feed answering'),
+    },
+    {
       provider: 'fleaflicker',
       url: 'https://www.fleaflicker.com/api/FetchUserLeagues?sport=NFL&email=probe%40example.com',
       check: (data) =>

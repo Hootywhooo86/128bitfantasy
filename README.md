@@ -9,6 +9,13 @@ who to start, who to pick up, and where to trade.
 
 Expo / React Native, same stack, look and AI setup as 128BIT FIT.
 
+**128BIT LEAGUES** — run your own **hockey** or **football** league with friends,
+right in the app: invite code, live snake draft with a pick clock and auto-pick,
+daily lineups, free agents, head-to-head points, standings. Scores come from the
+NHL's own stats and Sleeper's weekly stats (football scores match Sleeper's PPR
+to the hundredth). It lives in a free Supabase project the commissioner owns —
+setup in [`supabase/README.md`](supabase/README.md).
+
 ## Run it
 
 ```bash
@@ -28,6 +35,7 @@ npm run test:live        # hits the real APIs
 | **Player info** | Every rostered player shows an injury tag (**Q**, **D**, **O**, **IR**, SUS, PUP, DTD…), a pixel **news scroll** when there's news from the last 72 hours, injury + practice detail ("Hamstring — Strain", "DNP practice"), and **projected points** for the week. Tap a player for the full news stories and an ASK COACH button. |
 | **Lineup check** | Flags starters who are OUT / IR / doubtful / questionable and empty slots, lists healthy bench players allowed in that slot, and has one button to **fix it in the provider's own app** (the app stays read-only). Home cards show a red/yellow flag. Works without AI. |
 | **Coaches Corner** | Per team. Plays: START/SIT, WAIVER WIRE, TRADE TALK, **TRADE CHECK** (tap the players on each side; the coach grades it A–F and says accept / decline / counter), ASK COACH. Opened from a team, the coach gets that team's roster, matchup and league — refreshed every question — and remembers the conversation. Scouting another team? It sees theirs and yours, for trade ideas. |
+| **128BIT LEAGUES** | Your own league: create or join with a 6-letter code, draft room (live picks, timer, best available by last season's points in your scoring, auto-pick), set lineup (tap a player, tap the slot — swaps), free agents (add / drop). In season it shows on Home and in the team screen like any other league, with live points, Lineup Check and Coaches Corner. |
 | **Settings** | Everything else, see below. |
 
 Settings holds:
@@ -39,7 +47,7 @@ Settings holds:
 - **Coaches Corner AI** — provider, model, key.
 - **Updates** — SYNC ALL NOW, CHECK FANTASY APIS, CHECK FOR APP UPDATE (GitHub Releases, built by the `APK` workflow).
 
-Read-only everywhere. The app never changes a lineup or makes a move, even where a provider's API could.
+Read-only for outside sites. The app never changes a lineup or makes a move on Sleeper, Yahoo, ESPN and the rest, even where their API could. 128BIT LEAGUES is the one place it writes — they're your leagues.
 
 **Betting odds (off by default, 21+).** Settings → Betting odds. On a player: his
 team's game lines (spread, total, moneyline, with what a $10 win pays), his own
@@ -135,11 +143,13 @@ app/                      Expo Router screens
   settings/account/[provider]  sign in + help + read/write + API status
   settings/teams.tsx      show/hide leagues, pick your team
   settings/ai.tsx         AI provider / model / key
+  hosted/                 128BIT LEAGUES: setup + sign-in, create/join, [id] draft room, lineup, players
 components/               TopBar, ui kit, CoachesCornerButton (FIT's shell classes)
 lib/
   ai/                     ai-coach (shared with FIT), coaches-corner, settings
   storage/                kv (expo-sqlite), secure (keystore), connections, player-cache
   net.ts, net-errors.ts, api-key.ts   shared with FIT
+  leagues/                128BIT LEAGUES: Supabase client, data (RPC calls), stat feeds, provider adapter
 src/
   providers/<name>/       fetch + normalize one provider
   providers/registry.ts   wires adapters to caches
@@ -149,6 +159,8 @@ src/
   sports/prefs.ts         which leagues show, which team is yours
   providers/info.ts       help links, read/write, sign-in steps
   providers/health.ts     the API watch
+  leagues/                128BIT LEAGUES engine (pure): scoring, nhl + nfl stat parsing, draft, season, snapshot
+supabase/schema.sql       the league database + functions (run in your Supabase project); test/ runs in CI
 contract/                 live API contract tests (daily in CI)
 scripts/build-logo.mjs    draws the pixel whistle → every icon size
 ```

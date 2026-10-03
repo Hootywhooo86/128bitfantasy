@@ -163,3 +163,35 @@ export function weekOf(seasonStart: string, now: Date): number {
   const { from } = weekRange(seasonStart, 1);
   return Math.max(1, Math.floor((now.getTime() - from.getTime()) / (7 * 86400_000)) + 1);
 }
+
+export type PlayerGame = { state: GameState; start: string; opponent: string | null };
+
+export type GameState = 'pre' | 'live' | 'final';
+
+/** Per team, the game worth showing: the live one, else the next one, else the last one. */
+export function teamGames(week: { start: string; state: GameState; home: string; away: string }[], now: number): Map<string, PlayerGame> {
+  const out = new Map<string, PlayerGame>();
+  const sorted = [...week].sort((a, b) => a.start.localeCompare(b.start));
+  const teams = new Set(sorted.flatMap((g) => [g.home, g.away]));
+  for (const team of teams) {
+    const mine = sorted.filter((g) => g.home === team || g.away === team);
+    const pick =
+      mine.find((g) => g.state === 'live') ??
+      mine.find((g) => g.state === 'pre' && Date.parse(g.start) > now) ??
+      mine.filter((g) => g.state === 'final').pop() ??
+      mine[mine.length - 1];
+    out.set(team, { state: pick.state, start: pick.start, opponent: pick.home === team ? pick.away : pick.home });
+  }
+  return out;
+}
+
+/** When NFL week N begins: weeks turn over Tuesday, anchored on the Tuesday before opening night. */
+export function nflWeekStart(seasonStartDate: string, week: number): Date {
+  const d = new Date(`${seasonStartDate}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 5) % 7) + (week - 1) * 7);
+  return d;
+}
+
+export function nflWeekOf(seasonStartDate: string, at: Date): number {
+  return Math.max(1, Math.floor((at.getTime() - nflWeekStart(seasonStartDate, 1).getTime()) / (7 * 86_400_000)) + 1);
+}

@@ -152,3 +152,37 @@ describe('betting odds (ESPN, free)', () => {
     expect(props.size).toBeGreaterThan(0);
   }, 120_000);
 });
+
+describe('128BIT LEAGUES stat feeds', () => {
+  it('NHL rosters, season totals and a finished box score parse', async () => {
+    const { buildNhlPool, NHL_STATS, NHL_WEB, parseNhlBoxscore, parseNhlGames } = await import('@/src/leagues/nhl');
+    const q = (k: string) => `${NHL_STATS}/${k}?limit=-1&cayenneExp=${encodeURIComponent('seasonId=20252026 and gameTypeId=2')}`;
+    const [roster, summary, realtime, goalies] = await Promise.all([
+      getJson('bit128', `${NHL_WEB}/roster/EDM/current`),
+      getJson('bit128', q('skater/summary'), { timeoutMs: 60_000 }),
+      getJson('bit128', q('skater/realtime'), { timeoutMs: 60_000 }),
+      getJson('bit128', q('goalie/summary'), { timeoutMs: 60_000 }),
+    ]);
+    const pool = buildNhlPool([{ team: 'EDM', json: roster }], summary, realtime, goalies);
+    expect(pool.length).toBeGreaterThan(15);
+    expect(pool.some((p) => p.position === 'G')).toBe(true);
+    expect(pool.some((p) => (p.seasonLine.goals ?? 0) > 0 && typeof p.seasonLine.hits === 'number')).toBe(true);
+
+    const week = parseNhlGames(await getJson('bit128', `${NHL_WEB}/schedule/2026-04-13`));
+    expect(week.length).toBeGreaterThan(0);
+    const box = parseNhlBoxscore(await getJson('bit128', `${NHL_WEB}/gamecenter/${week[0].id}/boxscore`));
+    expect(box.state).toBe('final');
+    expect(box.lines.size).toBeGreaterThan(30);
+  }, 120_000);
+
+  it("Sleeper weekly stats still score the same as Sleeper's PPR", async () => {
+    const { parseSleeperWeek, SLEEPER_STATS } = await import('@/src/leagues/nfl');
+    const { fantasyPoints, NFL_SCORING } = await import('@/src/leagues/scoring');
+    const week = parseSleeperWeek(await getJson('bit128', `${SLEEPER_STATS}/2025/5`, { timeoutMs: 60_000 }));
+    const scored = [...week.values()].filter((l) => (l.pts_ppr ?? 0) > 5);
+    expect(scored.length).toBeGreaterThan(100);
+    // Nearly every player should match to the hundredth; a few odd stats (return TDs, 2-pt plays) may differ.
+    const off = scored.filter((l) => Math.abs(fantasyPoints(l, NFL_SCORING) - l.pts_ppr) > 0.05);
+    expect(off.length / scored.length).toBeLessThan(0.03);
+  }, 120_000);
+});
