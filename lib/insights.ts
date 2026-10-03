@@ -4,7 +4,7 @@
  * Every source is cached, and every source is optional: if one fails the rest
  * still show, and nothing is invented to fill the gap.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { getJson } from '@/src/providers/http';
 import { espnSeason } from '@/src/providers/espn/client';
 import {
@@ -111,7 +111,19 @@ export async function playerNews(sport: Sport, espnId: string): Promise<NewsItem
  * re-run this forever.
  */
 export function useInsights(snap: LeagueSnapshot | null, roster: Roster | undefined): Record<string, PlayerInsight> {
+  return useInsightsFor(snap, roster ? [roster] : null);
+}
+
+/** The same, for several rosters at once (both sides of a matchup, a whole league). */
+export function useInsightsFor(snap: LeagueSnapshot | null, rosters: Roster[] | null): Record<string, PlayerInsight> {
   const [out, setOut] = useState<Record<string, PlayerInsight>>({});
+  // Callers may pass a freshly filtered array each render; the work re-runs
+  // only when what it describes changes (which teams, which refresh).
+  const rostersRef = useRef(rosters);
+  useEffect(() => {
+    rostersRef.current = rosters;
+  });
+  const rosterKey = rosters?.length ? `${snap?.fetchedAt ?? 0}:${rosters.map((r) => `${r.teamId}/${r.players.length}`).join(',')}` : '';
   const league = snap?.league;
   const provider = league?.provider;
   const leagueId = league?.id;
@@ -120,7 +132,8 @@ export function useInsights(snap: LeagueSnapshot | null, roster: Roster | undefi
   const scoring = league?.scoring ?? null;
   const period = snap?.period;
   useEffect(() => {
-    if (!provider || !leagueId || !sport || !season || !roster) return;
+    const rosters = rostersRef.current;
+    if (!provider || !leagueId || !sport || !season || !rosters?.length || !rosterKey) return;
     let live = true;
     const lg = { provider, id: leagueId, sport, season, scoring, name: '', teamCount: null, myTeamId: null };
     const nfl = sport === 'nfl';
@@ -130,7 +143,7 @@ export function useInsights(snap: LeagueSnapshot | null, roster: Roster | undefi
       espn: null as EspnIndex | null,
     };
     const publish = () => {
-      if (live) setOut(Object.fromEntries(roster.players.map((p) => [p.id, insightFor(p, lg, src)])));
+      if (live) setOut(Object.fromEntries(rosters.flatMap((r) => r.players).map((p) => [p.id, insightFor(p, lg, src)])));
     };
     publish();
     const loads: Promise<unknown>[] = [espnIndex(sport).then((x) => (src.espn = x))];
@@ -142,6 +155,6 @@ export function useInsights(snap: LeagueSnapshot | null, roster: Roster | undefi
     return () => {
       live = false;
     };
-  }, [provider, leagueId, sport, season, scoring, period, roster]);
+  }, [provider, leagueId, sport, season, scoring, period, rosterKey]);
   return out;
 }

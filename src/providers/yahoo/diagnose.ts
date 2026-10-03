@@ -106,5 +106,5 @@ export function reportText(steps: CheckStep[]): string {
  */
 export function yahooPermissionHint(status: number, body: string): string | null {
   if (status !== 403 || !/not authorized/i.test(body)) return null;
-  return 'Yahoo refused fantasy data for this login. Check developer.yahoo.com/apps → your app → API Permissions has Fantasy Sports ticked, then tap SIGN IN WITH YAHOO again: logins from before alpha.6 did not ask for the Fantasy Sports permission (fspt-r) and have to be redone.';
+  return 'Yahoo signed you in but refuses fantasy data for this app. Yahoo now requires developers to apply for Fantasy API access (sports.yahoo.com/developer → Apply); until approved, every app gets this error. Also make sure Fantasy Sports is ticked on your Yahoo app, and sign in again after approval.';
 }

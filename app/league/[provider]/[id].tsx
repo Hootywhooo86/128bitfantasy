@@ -1,10 +1,11 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text } from 'react-native';
 import { CoachesCornerButton } from '@/components/CoachesCornerButton';
 import { LineupCheck } from '@/components/LineupCheck';
+import { MatchupCard } from '@/components/MatchupCard';
 import { RosterList } from '@/components/RosterList';
-import { Card, CardHead, Empty, Label, Note, Screen } from '@/components/ui';
+import { Card, Empty, Label, Note, Screen } from '@/components/ui';
 import { describeNetworkFailure } from '@/lib/net-errors';
 import { usePrefs } from '@/lib/storage/prefs';
 import { colors, fonts, themedStyles } from '@/lib/theme';
@@ -91,7 +92,6 @@ export default function LeagueScreen() {
   const roster = snap.rosters.find((r) => r.teamId === focusId);
   const m = matchupFor(snap, focusId);
   const [mine, opp] = m ? sides(m, focusId) : [null, null];
-  const pts = (p: number | null | undefined) => (p == null ? '—' : p.toFixed(1));
   const problems = snapshotProblems(snap);
   const issues = lineupIssues(roster, league.sport);
 
@@ -130,22 +130,7 @@ export default function LeagueScreen() {
 
       {focusId ? <LineupCheck league={league} teamId={focusId} issues={issues} mine={isMine} /> : null}
 
-      {m && mine ? (
-        <Card>
-          <CardHead title={snap.period ? `WEEK ${snap.period}` : 'THIS PERIOD'} note={opp ? undefined : 'Bye'} />
-          <View style={st.mu}>
-            <View style={st.side}>
-              <Text style={st.big}>{pts(mine.points)}</Text>
-              <Text style={st.tn} numberOfLines={1}>{teams.get(mine.teamId)?.name ?? 'Team'}</Text>
-            </View>
-            <Text style={st.vs}>VS</Text>
-            <Pressable style={[st.side, { alignItems: 'flex-end' }]} onPress={() => opp && setViewing(opp.teamId)}>
-              <Text style={st.big}>{pts(opp?.points)}</Text>
-              <Text style={st.tn} numberOfLines={1}>{opp ? teams.get(opp.teamId)?.name ?? 'Opponent' : '—'}</Text>
-            </Pressable>
-          </View>
-        </Card>
-      ) : null}
+      {m && mine ? <MatchupCard snap={snap} mine={mine} opp={opp} onOpen={setViewing} /> : null}
 
       {roster ? (
         <>

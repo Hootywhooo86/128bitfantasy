@@ -110,7 +110,7 @@ describe('missing Fantasy Sports permission', () => {
   });
 
   it('only for that 403', () => {
-    expect(yahooPermissionHint(403, body)).toMatch(/API Permissions/);
+    expect(yahooPermissionHint(403, body)).toMatch(/apply for Fantasy API access/);
     expect(yahooPermissionHint(401, body)).toBeNull();
     expect(yahooPermissionHint(403, '{"error":"rate limited"}')).toBeNull();
   });
@@ -118,6 +118,6 @@ describe('missing Fantasy Sports permission', () => {
   it('the normal sync error says it too', async () => {
     const { getJson } = await import('../http');
     vi.stubGlobal('fetch', async () => new Response(body, { status: 403 }));
-    await expect(getJson('yahoo', 'https://x')).rejects.toThrow(/refused fantasy data/);
+    await expect(getJson('yahoo', 'https://x')).rejects.toThrow(/apply for Fantasy API access/);
   });
 });

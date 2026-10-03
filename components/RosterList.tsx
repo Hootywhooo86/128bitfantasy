@@ -86,7 +86,10 @@ function kickoff(iso: string): string {
 const PlayerRow = memo(function PlayerRow({ p, i, g, onPress }: { p: RosterPlayer; i: PlayerInsight | undefined; g: Game; onPress: () => void }) {
   const state: GameState = g.state;
   // Before kickoff (or on a bye) a provider's 0 is not a score.
-  const showPoints = p.points != null && state !== 'pre' && state !== 'bye';
+  // Before kickoff (or on a bye) a provider's 0 is not a score — and with no
+  // scoreboard to say, a 0 next to a projection is treated as not started yet.
+  const showPoints =
+    p.points != null && state !== 'pre' && state !== 'bye' && !(state === 'unknown' && p.points === 0 && i?.projection != null);
   const tagColor = i?.level === 'questionable' ? colors.warn : i?.level === 'doubtful' ? '#ff9a3d' : colors.loss;
   return (
     <Pressable style={({ pressed }) => [st.prow, pressed && { backgroundColor: colors.surfaceAlt }]} onPress={onPress}>
