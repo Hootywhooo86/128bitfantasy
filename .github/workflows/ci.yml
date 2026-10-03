@@ -46,3 +46,4 @@ jobs:
       - run: psql -v ON_ERROR_STOP=1 -q -f supabase/schema.sql
       - run: psql -v ON_ERROR_STOP=1 -q -f supabase/test/flow.sql
       - run: psql -v ON_ERROR_STOP=1 -q -f supabase/test/moves.sql
+      - run: psql -v ON_ERROR_STOP=1 -q -f supabase/test/extras.sql

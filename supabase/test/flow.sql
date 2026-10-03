@@ -50,7 +50,7 @@ select pg_temp.check((select count(*) from roster) = 4, 'member sees every roste
 reset role;
 
 select set_slot(:'l', '8478402', 'BN');
-select pg_temp.fails(format('select set_slot(%L, ''1'', ''BN'')', :'l'), 'not on your team');
+select pg_temp.fails(format('select set_slot(%L, ''1'', ''BN'')', :'l'), 'not on that team');
 select add_drop(:'l', '9', 'C', '8478402');
 select pg_temp.fails(format('select add_drop(%L, ''10'', ''C'', null)', :'l'), 'roster is full');
 select pg_temp.check((select count(*) from lineup_log where league_id = :'l') = 7, 'every move logged');

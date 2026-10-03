@@ -6,15 +6,15 @@
 -- Everyone reads only the leagues they're in (row-level security). Nobody
 -- writes tables directly: every change goes through the functions at the
 -- bottom, which check it's your turn / your team / your league first.
--- Points are never stored per game — they come from the NHL and Sleeper
--- stat feeds, applied to lineup_log, so nobody can type in a score.
+-- Points are never stored per game — they come from the NHL, MLB and
+-- Sleeper stat feeds, applied to lineup_log, so nobody can type in a score.
 
 create extension if not exists pgcrypto;
 
 create table if not exists leagues (
   id uuid primary key default gen_random_uuid(),
   name text not null check (char_length(name) between 1 and 60),
-  sport text not null check (sport in ('nhl', 'nfl')),
+  sport text not null,
   season text not null,
   invite_code text not null unique,
   commissioner uuid not null references auth.users (id) on delete cascade,
@@ -148,6 +148,47 @@ create table if not exists transactions (
 );
 create index if not exists transactions_league on transactions (league_id, at desc);
 
+-- ── Added in the second release: divisions, pick trading, keepers, auction ─
+
+-- Leagues made before baseball and basketball only allowed hockey/football.
+alter table leagues drop constraint if exists leagues_sport_check;
+alter table leagues add constraint leagues_sport_check check (sport in ('nhl', 'nfl', 'mlb', 'nba'));
+
+-- Last season's league, for keepers and dynasty.
+alter table leagues add column if not exists previous_id uuid references leagues (id) on delete set null;
+-- The live auction lot: {player, position, bid, team, nominator, ends_at}.
+alter table leagues add column if not exists lot jsonb;
+alter table leagues add column if not exists nominate_idx int not null default 0;
+
+alter table teams add column if not exists division int;
+alter table teams add column if not exists previous_team uuid;
+-- Auction dollars left.
+alter table teams add column if not exists budget int not null default 0;
+
+alter table picks add column if not exists price int;
+
+-- Who owns a draft pick, when it isn't the team it started with.
+create table if not exists pick_owners (
+  league_id uuid not null references leagues (id) on delete cascade,
+  season text not null,
+  round int not null,
+  original_team uuid not null references teams (id) on delete cascade,
+  owner uuid not null references teams (id) on delete cascade,
+  primary key (league_id, season, round, original_team)
+);
+
+-- Players each team keeps into a new season.
+create table if not exists keepers (
+  league_id uuid not null references leagues (id) on delete cascade,
+  team_id uuid not null references teams (id) on delete cascade,
+  player_id text not null,
+  position text not null,
+  primary key (league_id, player_id)
+);
+
+alter table trades add column if not exists give_picks text[] not null default '{}';
+alter table trades add column if not exists get_picks text[] not null default '{}';
+
 -- ── Who can read what ────────────────────────────────────────────────────
 
 create or replace function is_member(l uuid) returns boolean
@@ -157,13 +198,14 @@ $$;
 
 -- Supabase grants these by default; spelled out so a fresh project matches.
 grant usage on schema public to authenticated;
-grant select on leagues, teams, picks, roster, lineup_log, matchups, week_scores, waivers, claims, trades, trade_votes, transactions
-  to authenticated;
+grant select on leagues, teams, picks, roster, lineup_log, matchups, week_scores, waivers, claims, trades, trade_votes, transactions,
+  pick_owners, keepers to authenticated;
 
 do $$
 declare t text;
 begin
-  foreach t in array array['leagues', 'teams', 'picks', 'roster', 'lineup_log', 'matchups', 'week_scores', 'waivers', 'trades', 'trade_votes', 'transactions'] loop
+  foreach t in array array['leagues', 'teams', 'picks', 'roster', 'lineup_log', 'matchups', 'week_scores', 'waivers', 'trades', 'trade_votes', 'transactions',
+    'pick_owners', 'keepers'] loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists "members read" on %I', t);
     execute format('create policy "members read" on %I for select using (is_member(%s))', t, case when t = 'leagues' then 'id' when t = 'trade_votes' then '(select league_id from trades where id = trade_id)' else 'league_id' end);
@@ -204,19 +246,71 @@ language sql immutable as $$
   end;
 $$;
 
--- Which positions a lineup slot takes. Matches SLOT_ACCEPTS in types.ts.
-create or replace function slot_takes(slot text, pos text) returns boolean
+-- Which positions a lineup slot takes, per sport. A player can list several
+-- positions ("SF/PF"); any one that fits will do. Matches slotTakes in draft.ts.
+drop function if exists slot_takes(text, text);
+drop function if exists draft_rounds(jsonb);
+create or replace function slot_takes(slot text, pos text, sport text default null) returns boolean
 language sql immutable as $$
-  select case slot
-    when 'BN' then true
-    when 'IR' then true
-    when 'UTIL' then pos in ('C', 'LW', 'RW', 'D')
-    when 'F' then pos in ('C', 'LW', 'RW')
-    when 'FLEX' then pos in ('RB', 'WR', 'TE')
-    when 'SUPERFLEX' then pos in ('QB', 'RB', 'WR', 'TE')
-    else slot = pos
-  end;
+  select slot in ('BN', 'IR') or exists (
+    select 1 from unnest(string_to_array(pos, '/')) p
+    where p = slot or case
+      when slot = 'UTIL' and sport = 'nba' then true
+      when slot = 'UTIL' and sport = 'mlb' then p in ('C', '1B', '2B', '3B', 'SS', 'OF', 'DH')
+      when slot = 'UTIL' then p in ('C', 'LW', 'RW', 'D')
+      when slot = 'F' and sport = 'nba' then p in ('SF', 'PF')
+      when slot = 'F' then p in ('C', 'LW', 'RW')
+      when slot = 'G' and sport = 'nba' then p in ('PG', 'SG')
+      when slot = 'FLEX' then p in ('RB', 'WR', 'TE')
+      when slot = 'SUPERFLEX' then p in ('QB', 'RB', 'WR', 'TE')
+      when slot = 'CI' then p in ('1B', '3B')
+      when slot = 'MI' then p in ('2B', 'SS')
+      when slot = 'P' then p in ('SP', 'RP')
+      else false
+    end
+  );
 $$;
+
+-- Rounds in the draft. A first season drafts full rosters; after that the
+-- league's setting, or the roster minus keepers.
+create or replace function draft_rounds(settings jsonb, first_season boolean default false) returns int
+language sql immutable as $$
+  select case when first_season then roster_size(settings)
+    else greatest(1, coalesce(nullif(settings ->> 'draftRounds', '')::int,
+      roster_size(settings) - coalesce((settings ->> 'keepers')::int, 0))) end;
+$$;
+
+create or replace function league_rounds(l uuid) returns int
+language sql stable as $$
+  select draft_rounds(settings, previous_id is null) from leagues where id = l;
+$$;
+
+-- Who owns a pick now: a trade moves it, otherwise it's the original team's.
+create or replace function pick_owner(l uuid, s text, r int, orig uuid) returns uuid
+language sql stable as $$
+  select coalesce((select owner from pick_owners where league_id = l and season = s and round = r and original_team = orig), orig);
+$$;
+
+-- The first starting spot a new player fits in, else the bench.
+create or replace function landing_slot(l uuid, t uuid, pos text) returns text
+language plpgsql stable as $$
+declare
+  lg leagues := (select x from leagues x where id = l);
+  k text;
+  n int;
+begin
+  -- His own position first, flexible spots after.
+  for k, n in
+    select key, value::int from jsonb_each_text(lg.settings -> 'slots')
+    order by case when key = any (string_to_array(pos, '/')) then 0 else 1 end
+  loop
+    if slot_takes(k, pos, lg.sport)
+       and (select count(*) from roster where league_id = l and team_id = t and slot = k) < n then
+      return k;
+    end if;
+  end loop;
+  return 'BN';
+end $$;
 
 -- Players on a team who count against the roster limit (not IR).
 create or replace function active_count(l uuid, t uuid) returns int
@@ -238,13 +332,16 @@ begin
 end $$;
 
 -- After any lineup change: every slot within its count, every player in a slot he can play.
-create or replace function check_lineup(l uuid, t uuid) returns void
+-- check_size = false for pure lineup moves, which never add a player.
+drop function if exists check_lineup(uuid, uuid);
+create or replace function check_lineup(l uuid, t uuid, check_size boolean default true) returns void
 language plpgsql as $$
 declare
-  st jsonb := (select settings from leagues where id = l);
+  lg leagues := (select x from leagues x where id = l);
+  st jsonb := lg.settings;
   bad text;
 begin
-  select r.player_id into bad from roster r where r.league_id = l and r.team_id = t and not slot_takes(r.slot, r.position) limit 1;
+  select r.player_id into bad from roster r where r.league_id = l and r.team_id = t and not slot_takes(r.slot, r.position, lg.sport) limit 1;
   if bad is not null then raise exception 'That spot doesn''t take that position.'; end if;
   select r.slot into bad from roster r where r.league_id = l and r.team_id = t and r.slot not in ('BN', 'IR')
     group by r.slot having count(*) > coalesce((st -> 'slots' ->> r.slot)::int, 0) limit 1;
@@ -252,7 +349,7 @@ begin
   if (select count(*) from roster where league_id = l and team_id = t and slot = 'IR') > coalesce((st ->> 'ir')::int, 0) then
     raise exception 'Your IR spots are full.';
   end if;
-  if active_count(l, t) > roster_size(st) then raise exception 'Your roster is full — drop someone first.'; end if;
+  if check_size and active_count(l, t) > roster_size(st) then raise exception 'Your roster is full — drop someone first.'; end if;
 end $$;
 
 -- ── Everything a phone can do ────────────────────────────────────────────
@@ -278,7 +375,8 @@ end $$;
 
 -- Commissioner. Before the draft anything goes; after it, the shape of the
 -- league (format, lineup, bench, categories, weeks, draft) is fixed and only
--- the rest (scoring, IR, playoffs, waivers, trades, limits) can change.
+-- the rest (scoring, IR, playoffs, waivers, trades, limits, divisions,
+-- keepers for next season) can change.
 create or replace function update_league(p_league uuid, p_name text, p_max_teams int, p_settings jsonb)
 returns void language plpgsql security definer set search_path = public as $$
 declare
@@ -291,7 +389,8 @@ begin
   if lg.status <> 'setup' then
     merged := merged || jsonb_strip_nulls(jsonb_build_object(
       'format', lg.settings -> 'format', 'slots', lg.settings -> 'slots', 'bench', lg.settings -> 'bench',
-      'categories', lg.settings -> 'categories', 'weeks', lg.settings -> 'weeks', 'draftType', lg.settings -> 'draftType'));
+      'categories', lg.settings -> 'categories', 'weeks', lg.settings -> 'weeks', 'draftType', lg.settings -> 'draftType',
+      'draftRounds', lg.settings -> 'draftRounds', 'auctionBudget', lg.settings -> 'auctionBudget'));
     p_max_teams := lg.max_teams;
   elsif p_max_teams < (select count(*) from teams where league_id = p_league) then
     raise exception 'More teams have joined than that.';
@@ -317,12 +416,14 @@ end $$;
 
 -- Commissioner only. The phone shuffles the order and builds the schedule
 -- (draft.ts / season.ts) so there is one implementation of each.
+-- Keepers join their teams first, so nobody can draft them.
 create or replace function start_draft(p_league uuid, p_order uuid[], p_schedule jsonb, p_season_start timestamptz)
 returns void language plpgsql security definer set search_path = public as $$
 declare
   lg leagues;
+  k record;
 begin
-  select * into lg from leagues where id = p_league;
+  select * into lg from leagues where id = p_league for update;
   if lg.commissioner is distinct from auth.uid() then raise exception 'Only the commissioner can start the draft.'; end if;
   if lg.status <> 'setup' then raise exception 'The draft has already started.'; end if;
   if (select count(*) from teams where league_id = p_league) < 2 then raise exception 'Invite at least one friend first.'; end if;
@@ -335,63 +436,94 @@ begin
   from jsonb_array_elements(p_schedule) m;
   -- First waiver claim goes to the last pick of round one.
   update teams t set waiver_rank = array_length(p_order, 1) - array_position(p_order, t.id) + 1,
-    faab = coalesce((lg.settings -> 'waivers' ->> 'budget')::int, 100)
+    faab = coalesce((lg.settings -> 'waivers' ->> 'budget')::int, 100),
+    budget = coalesce((lg.settings ->> 'auctionBudget')::int, 200)
   where t.league_id = p_league;
-  update leagues set status = 'drafting', draft_order = p_order, season_start = p_season_start, last_pick_at = now()
+  for k in select * from keepers where league_id = p_league loop
+    perform put_player(p_league, k.team_id, k.player_id, k.position, landing_slot(p_league, k.team_id, k.position));
+    insert into transactions (league_id, team_id, kind, player_id) values (p_league, k.team_id, 'keeper', k.player_id);
+  end loop;
+  update leagues set status = 'drafting', draft_order = p_order, season_start = p_season_start, last_pick_at = now(),
+    lot = null, nominate_idx = 0
   where id = p_league;
 end $$;
 
+-- The draft pick itself, once it's been decided whose it is.
+create or replace function do_pick(l uuid, t uuid, p text, pos text, auto boolean, price int) returns void
+language plpgsql as $$
+declare
+  lg leagues := (select x from leagues x where id = l);
+  n int := (select count(*) from picks where league_id = l);
+begin
+  if exists (select 1 from roster where league_id = l and player_id = p) then
+    raise exception 'That player is already taken.';
+  end if;
+  insert into picks (league_id, pick_no, team_id, player_id, auto, price) values (l, n, t, p, auto, price);
+  perform put_player(l, t, p, pos, landing_slot(l, t, pos));
+  update leagues set last_pick_at = now(),
+    status = case when n + 1 >= array_length(draft_order, 1) * league_rounds(l) then 'season' else status end
+  where id = l;
+end $$;
+
+-- The team on the clock now (snake / linear), after pick trades.
+create or replace function on_clock(l uuid) returns uuid
+language sql stable as $$
+  select pick_owner(lg.id, lg.season,
+    (select count(*)::int from picks where league_id = lg.id) / array_length(lg.draft_order, 1) + 1,
+    draft_team(lg.draft_order, (select count(*)::int from picks where league_id = lg.id), coalesce(lg.settings ->> 'draftType', 'snake')))
+  from leagues lg where lg.id = l;
+$$;
+
 -- Your pick when you're on the clock. Anyone in the league may also pick
 -- for the team on the clock once its time has run out (auto-pick).
-create or replace function make_pick(p_league uuid, p_player text, p_position text, p_slot text)
+-- p_slot is ignored now: the pick lands in the first spot he fits.
+create or replace function make_pick(p_league uuid, p_player text, p_position text, p_slot text default null)
 returns void language plpgsql security definer set search_path = public as $$
 declare
   lg leagues;
-  n int;
-  on_clock uuid;
+  t uuid;
   is_auto boolean := false;
 begin
   select * into lg from leagues where id = p_league for update;
   if not is_member(p_league) then raise exception 'You are not in this league.'; end if;
   if lg.status <> 'drafting' then raise exception 'The draft is not running.'; end if;
-  select count(*) into n from picks where league_id = p_league;
-  on_clock := draft_team(lg.draft_order, n, coalesce(lg.settings ->> 'draftType', 'snake'));
-  if on_clock is distinct from my_team(p_league) then
+  if lg.settings ->> 'draftType' = 'auction' then raise exception 'This is an auction draft — nominate and bid instead.'; end if;
+  t := on_clock(p_league);
+  if t is distinct from my_team(p_league) then
     if now() < lg.last_pick_at + make_interval(secs => coalesce((lg.settings ->> 'pickSeconds')::int, 90)) then
       raise exception 'It is not your pick.';
     end if;
     is_auto := true;
   end if;
-  if exists (select 1 from roster where league_id = p_league and player_id = p_player) then
-    raise exception 'That player is already taken.';
-  end if;
-  insert into picks (league_id, pick_no, team_id, player_id, auto) values (p_league, n, on_clock, p_player, is_auto);
-  perform put_player(p_league, on_clock, p_player, p_position, case when slot_takes(p_slot, p_position) then p_slot else 'BN' end);
-  -- A full slot sends the pick to the bench rather than failing the draft.
-  begin
-    perform check_lineup(p_league, on_clock);
-  exception when others then
-    update roster set slot = 'BN' where league_id = p_league and player_id = p_player;
-  end;
-  update leagues set last_pick_at = now(),
-    status = case when n + 1 >= array_length(draft_order, 1) * roster_size(settings) then 'season' else status end
-  where id = p_league;
+  perform do_pick(p_league, t, p_player, p_position, is_auto, null);
 end $$;
 
 -- Several lineup moves at once (a swap is two), checked together at the end.
+create or replace function lineup_moves(l uuid, t uuid, p_moves jsonb) returns void
+language plpgsql as $$
+declare
+  m jsonb;
+  before int := active_count(l, t);
+begin
+  for m in select * from jsonb_array_elements(p_moves) loop
+    update roster set slot = m ->> 'slot' where league_id = l and player_id = m ->> 'player' and team_id = t;
+    if not found then raise exception 'That player is not on that team.'; end if;
+    insert into lineup_log (league_id, team_id, player_id, slot) values (l, t, m ->> 'player', m ->> 'slot');
+  end loop;
+  perform check_lineup(l, t, false);
+  -- Off IR only if there's room (or the roster was already over, e.g. after the draft).
+  if active_count(l, t) > before and active_count(l, t) > roster_size((select settings from leagues where id = l)) then
+    raise exception 'Your roster is full — drop someone first.';
+  end if;
+end $$;
+
 create or replace function set_lineup(p_league uuid, p_moves jsonb)
 returns void language plpgsql security definer set search_path = public as $$
 declare
   t uuid := my_team(p_league);
-  m jsonb;
 begin
   if t is null then raise exception 'You are not in this league.'; end if;
-  for m in select * from jsonb_array_elements(p_moves) loop
-    update roster set slot = m ->> 'slot' where league_id = p_league and player_id = m ->> 'player' and team_id = t;
-    if not found then raise exception 'That player is not on your team.'; end if;
-    insert into lineup_log (league_id, team_id, player_id, slot) values (p_league, t, m ->> 'player', m ->> 'slot');
-  end loop;
-  perform check_lineup(p_league, t);
+  perform lineup_moves(p_league, t, p_moves);
 end $$;
 
 create or replace function set_slot(p_league uuid, p_player text, p_slot text)
@@ -559,33 +691,79 @@ end $$;
 
 -- ── Trades ───────────────────────────────────────────────────────────────
 
-create or replace function propose_trade(p_league uuid, p_to uuid, p_give text[], p_get text[], p_note text)
+-- A pick is "season:round:original team id". It can be traded while it's
+-- still to come: this season's before it's made, or a future season's.
+create or replace function pick_open(l uuid, pk text, holder uuid) returns boolean
+language plpgsql stable as $$
+declare
+  lg leagues := (select x from leagues x where id = l);
+  parts text[] := string_to_array(pk, ':');
+  s text := parts[1];
+  r int := parts[2]::int;
+  orig uuid := parts[3]::uuid;
+  n int := array_length(lg.draft_order, 1);
+  pos int;
+  idx int;
+begin
+  if not exists (select 1 from teams where id = orig and league_id = l) then return false; end if;
+  if r < 1 or r > (case when s = lg.season then league_rounds(l) else draft_rounds(lg.settings) end) then return false; end if;
+  if pick_owner(l, s, r, orig) is distinct from holder then return false; end if;
+  if s < lg.season then return false; end if;
+  if s = lg.season then
+    if lg.settings ->> 'draftType' = 'auction' or lg.status in ('season', 'done') then return false; end if;
+    if lg.status = 'drafting' then
+      pos := array_position(lg.draft_order, orig) - 1;
+      idx := case when coalesce(lg.settings ->> 'draftType', 'snake') = 'linear' or r % 2 = 1 then pos else n - 1 - pos end;
+      if (r - 1) * n + idx < (select count(*) from picks where league_id = l) then return false; end if;
+    end if;
+  end if;
+  return true;
+exception when others then
+  return false;
+end $$;
+
+drop function if exists propose_trade(uuid, uuid, text[], text[], text);
+create or replace function propose_trade(p_league uuid, p_to uuid, p_give text[], p_get text[], p_note text,
+  p_give_picks text[] default '{}', p_get_picks text[] default '{}')
 returns uuid language plpgsql security definer set search_path = public as $$
 declare
   lg leagues;
   t uuid := my_team(p_league);
   id uuid;
+  pk text;
 begin
   select * into lg from leagues where leagues.id = p_league;
   if t is null then raise exception 'You are not in this league.'; end if;
-  if lg.status <> 'season' then raise exception 'Trades open after the draft.'; end if;
-  if nullif(lg.settings -> 'trades' ->> 'deadline', '') is not null and current_date > (lg.settings -> 'trades' ->> 'deadline')::date then
+  if lg.status = 'done' then raise exception 'This season is over.'; end if;
+  if nullif(lg.settings -> 'trades' ->> 'deadline', '') is not null and lg.status = 'season'
+     and current_date > (lg.settings -> 'trades' ->> 'deadline')::date then
     raise exception 'The trade deadline has passed.';
   end if;
   if p_to = t or not exists (select 1 from teams where teams.id = p_to and league_id = p_league) then raise exception 'Pick another team in this league.'; end if;
-  if coalesce(array_length(p_give, 1), 0) + coalesce(array_length(p_get, 1), 0) = 0 then raise exception 'Add at least one player.'; end if;
+  if coalesce(array_length(p_give, 1), 0) + coalesce(array_length(p_get, 1), 0)
+     + coalesce(array_length(p_give_picks, 1), 0) + coalesce(array_length(p_get_picks, 1), 0) = 0 then
+    raise exception 'Add at least one player or pick.';
+  end if;
   if exists (select 1 from unnest(p_give) p where not exists (select 1 from roster where league_id = p_league and player_id = p and team_id = t)) then
     raise exception 'One of the players you''re giving isn''t yours.';
   end if;
   if exists (select 1 from unnest(p_get) p where not exists (select 1 from roster where league_id = p_league and player_id = p and team_id = p_to)) then
     raise exception 'One of the players you asked for isn''t on their team.';
   end if;
-  insert into trades (league_id, from_team, to_team, give, get, note) values (p_league, t, p_to, p_give, p_get, nullif(trim(p_note), ''))
+  foreach pk in array p_give_picks loop
+    if not pick_open(p_league, pk, t) then raise exception 'One of the picks you''re giving isn''t yours to trade.'; end if;
+  end loop;
+  foreach pk in array p_get_picks loop
+    if not pick_open(p_league, pk, p_to) then raise exception 'One of the picks you asked for isn''t theirs to trade.'; end if;
+  end loop;
+  insert into trades (league_id, from_team, to_team, give, get, note, give_picks, get_picks)
+  values (p_league, t, p_to, p_give, p_get, nullif(trim(p_note), ''), p_give_picks, p_get_picks)
   returning trades.id into id;
   return id;
 end $$;
 
--- Moves the players. Fails (status 'failed') if a player moved or a roster would overflow.
+-- Moves the players and picks. Fails (status 'failed') if a player moved or
+-- a pick was used; raises if a roster would overflow.
 create or replace function execute_trade(p_trade uuid) returns void
 language plpgsql as $$
 declare
@@ -593,12 +771,15 @@ declare
   st jsonb;
   p text;
   pos text;
+  parts text[];
 begin
   select * into tr from trades where id = p_trade for update;
   st := (select settings from leagues where id = tr.league_id);
   if exists (select 1 from unnest(tr.give) g where not exists (select 1 from roster where league_id = tr.league_id and player_id = g and team_id = tr.from_team))
-     or exists (select 1 from unnest(tr.get) g where not exists (select 1 from roster where league_id = tr.league_id and player_id = g and team_id = tr.to_team)) then
-    update trades set status = 'failed', note = coalesce(note || ' · ', '') || 'A player changed teams first', updated_at = now() where id = p_trade;
+     or exists (select 1 from unnest(tr.get) g where not exists (select 1 from roster where league_id = tr.league_id and player_id = g and team_id = tr.to_team))
+     or exists (select 1 from unnest(tr.give_picks) g where not pick_open(tr.league_id, g, tr.from_team))
+     or exists (select 1 from unnest(tr.get_picks) g where not pick_open(tr.league_id, g, tr.to_team)) then
+    update trades set status = 'failed', note = coalesce(note || ' · ', '') || 'A player or pick changed hands first', updated_at = now() where id = p_trade;
     return;
   end if;
   -- Traded players arrive on the bench; IR players come off IR.
@@ -614,14 +795,29 @@ begin
     perform put_player(tr.league_id, tr.from_team, p, pos, 'BN');
     insert into transactions (league_id, team_id, kind, player_id) values (tr.league_id, tr.from_team, 'trade-in', p);
   end loop;
-  if active_count(tr.league_id, tr.from_team) > roster_size(st) or active_count(tr.league_id, tr.to_team) > roster_size(st) then
+  foreach p in array tr.give_picks loop
+    parts := string_to_array(p, ':');
+    insert into pick_owners values (tr.league_id, parts[1], parts[2]::int, parts[3]::uuid, tr.to_team)
+    on conflict (league_id, season, round, original_team) do update set owner = excluded.owner;
+    insert into transactions (league_id, team_id, kind, detail) values (tr.league_id, tr.to_team, 'pick-in', p);
+  end loop;
+  foreach p in array tr.get_picks loop
+    parts := string_to_array(p, ':');
+    insert into pick_owners values (tr.league_id, parts[1], parts[2]::int, parts[3]::uuid, tr.from_team)
+    on conflict (league_id, season, round, original_team) do update set owner = excluded.owner;
+    insert into transactions (league_id, team_id, kind, detail) values (tr.league_id, tr.from_team, 'pick-in', p);
+  end loop;
+  -- Only a team taking on more players than it sends can go over the limit.
+  if (cardinality(tr.get) > cardinality(tr.give) and active_count(tr.league_id, tr.from_team) > roster_size(st))
+     or (cardinality(tr.give) > cardinality(tr.get) and active_count(tr.league_id, tr.to_team) > roster_size(st)) then
     raise exception 'That trade would leave a roster over the limit — drop someone first.';
   end if;
   update trades set status = 'completed', updated_at = now() where id = p_trade;
-  -- Other offers involving these players can't happen any more.
-  update trades set status = 'failed', note = coalesce(note || ' · ', '') || 'A player was traded elsewhere', updated_at = now()
+  -- Other offers involving these players or picks can't happen any more.
+  update trades set status = 'failed', note = coalesce(note || ' · ', '') || 'Part of it was traded elsewhere', updated_at = now()
   where league_id = tr.league_id and id <> p_trade and status in ('proposed', 'accepted')
-    and (give && (tr.give || tr.get) or get && (tr.give || tr.get));
+    and (give && (tr.give || tr.get) or get && (tr.give || tr.get)
+      or give_picks && (tr.give_picks || tr.get_picks) or get_picks && (tr.give_picks || tr.get_picks));
 end $$;
 
 create or replace function respond_trade(p_trade uuid, p_accept boolean)
@@ -748,6 +944,246 @@ begin
   end if;
 end $$;
 
+-- ── Auction draft ────────────────────────────────────────────────────────
+
+-- Players a team still has to buy in the draft.
+create or replace function draft_needs(l uuid, t uuid) returns int
+language sql stable as $$
+  select league_rounds(l) - (select count(*)::int from picks where league_id = l and team_id = t);
+$$;
+
+-- Most a team can bid: its budget, keeping $1 for every other spot it must fill.
+create or replace function max_bid(l uuid, t uuid) returns int
+language sql stable as $$
+  select (select budget from teams where id = t) - greatest(draft_needs(l, t) - 1, 0);
+$$;
+
+-- Whose turn it is to put a player up: the next team in draft order that still needs players.
+create or replace function nominator(l uuid) returns uuid
+language plpgsql stable as $$
+declare
+  lg leagues := (select x from leagues x where id = l);
+  n int := array_length(lg.draft_order, 1);
+  i int;
+  t uuid;
+begin
+  for i in 0 .. n - 1 loop
+    t := lg.draft_order[((lg.nominate_idx + i) % n) + 1];
+    if draft_needs(l, t) > 0 then return t; end if;
+  end loop;
+  return null;
+end $$;
+
+-- Put a player up for auction with an opening bid. The nominating team holds
+-- the opening bid. Anyone may nominate for a team whose turn has timed out.
+create or replace function nominate(p_league uuid, p_player text, p_position text, p_bid int)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  lg leagues;
+  t uuid;
+begin
+  select * into lg from leagues where id = p_league for update;
+  if not is_member(p_league) then raise exception 'You are not in this league.'; end if;
+  if lg.status <> 'drafting' or lg.settings ->> 'draftType' <> 'auction' then raise exception 'There''s no auction running.'; end if;
+  if lg.lot is not null then raise exception 'A player is already up for bids.'; end if;
+  t := nominator(p_league);
+  if t is distinct from my_team(p_league)
+     and now() < lg.last_pick_at + make_interval(secs => coalesce((lg.settings ->> 'pickSeconds')::int, 90)) then
+    raise exception 'It''s not your turn to nominate.';
+  end if;
+  if exists (select 1 from roster where league_id = p_league and player_id = p_player) then raise exception 'That player is already taken.'; end if;
+  if p_bid < 1 or p_bid > max_bid(p_league, t) then raise exception 'Opening bid must be $1 to $%.', max_bid(p_league, t); end if;
+  update leagues set lot = jsonb_build_object('player', p_player, 'position', p_position, 'bid', p_bid, 'team', t, 'nominator', t,
+    'ends_at', now() + make_interval(secs => coalesce((lg.settings ->> 'bidSeconds')::int, 20)))
+  where id = p_league;
+end $$;
+
+-- Raise the bid. Every bid resets the clock.
+create or replace function place_bid(p_league uuid, p_amount int)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  lg leagues;
+  t uuid := my_team(p_league);
+begin
+  select * into lg from leagues where id = p_league for update;
+  if t is null then raise exception 'You are not in this league.'; end if;
+  if lg.lot is null then raise exception 'Nobody is up for bids.'; end if;
+  if now() >= (lg.lot ->> 'ends_at')::timestamptz then raise exception 'Bidding on him has closed.'; end if;
+  if draft_needs(p_league, t) <= 0 then raise exception 'Your roster is full.'; end if;
+  if p_amount <= (lg.lot ->> 'bid')::int then raise exception 'Bid more than $%.', lg.lot ->> 'bid'; end if;
+  if p_amount > max_bid(p_league, t) then raise exception 'You can bid at most $%.', max_bid(p_league, t); end if;
+  update leagues set lot = lot || jsonb_build_object('bid', p_amount, 'team', t,
+    'ends_at', now() + make_interval(secs => coalesce((lg.settings ->> 'bidSeconds')::int, 20)))
+  where id = p_league;
+end $$;
+
+-- Sold: anyone can close a lot once its clock runs out.
+create or replace function close_lot(p_league uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  lg leagues;
+  t uuid;
+  price int;
+begin
+  select * into lg from leagues where id = p_league for update;
+  if not is_member(p_league) then raise exception 'You are not in this league.'; end if;
+  if lg.lot is null then return; end if;
+  if now() < (lg.lot ->> 'ends_at')::timestamptz then raise exception 'Bidding is still open.'; end if;
+  t := (lg.lot ->> 'team')::uuid;
+  price := (lg.lot ->> 'bid')::int;
+  perform do_pick(p_league, t, lg.lot ->> 'player', lg.lot ->> 'position', false, price);
+  update teams set budget = budget - price where id = t;
+  update leagues set lot = null,
+    nominate_idx = array_position(draft_order, (lg.lot ->> 'nominator')::uuid)
+  where id = p_league;
+end $$;
+
+-- ── Keepers and new seasons ──────────────────────────────────────────────
+
+-- Commissioner: start next season. Same teams, owners, settings and
+-- divisions; picks traded for next season come along. Everyone then
+-- chooses keepers before the commissioner starts the draft.
+create or replace function new_season(p_league uuid, p_season text)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  lg leagues;
+  nl uuid;
+  code text;
+begin
+  select * into lg from leagues where id = p_league for update;
+  if lg.commissioner is distinct from auth.uid() then raise exception 'Only the commissioner can start a new season.'; end if;
+  if lg.status not in ('season', 'done') then raise exception 'Finish this season''s draft first.'; end if;
+  if p_season <= lg.season then raise exception 'The new season must come after %.', lg.season; end if;
+  if exists (select 1 from leagues where previous_id = p_league) then raise exception 'Next season has already been started.'; end if;
+  loop
+    code := (select string_agg(substr('ABCDEFGHJKMNPQRSTUVWXYZ23456789', 1 + floor(random() * 31)::int, 1), '') from generate_series(1, 6));
+    exit when not exists (select 1 from leagues where invite_code = code);
+  end loop;
+  insert into leagues (name, sport, season, invite_code, commissioner, max_teams, settings, previous_id)
+  values (lg.name, lg.sport, p_season, code, lg.commissioner, lg.max_teams, lg.settings, p_league)
+  returning id into nl;
+  insert into teams (league_id, owner, name, division, previous_team)
+  select nl, owner, name, division, id from teams where league_id = p_league;
+  insert into pick_owners (league_id, season, round, original_team, owner)
+  select nl, po.season, po.round, o.id, w.id
+  from pick_owners po
+  join teams o on o.league_id = nl and o.previous_team = po.original_team
+  join teams w on w.league_id = nl and w.previous_team = po.owner
+  where po.league_id = p_league and po.season >= p_season;
+  update leagues set status = 'done' where id = p_league;
+  insert into transactions (league_id, kind, detail) values (nl, 'commish', 'New season started from ' || lg.season);
+  return nl;
+end $$;
+
+-- Your keepers for the new season, from your team's final roster last season.
+create or replace function set_keepers(p_league uuid, p_players text[])
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  lg leagues;
+  t uuid := my_team(p_league);
+  prev_team uuid;
+  lim int;
+begin
+  select * into lg from leagues where id = p_league;
+  if t is null then raise exception 'You are not in this league.'; end if;
+  if lg.status <> 'setup' then raise exception 'Keepers lock when the draft starts.'; end if;
+  if lg.previous_id is null then raise exception 'This league has no previous season to keep players from.'; end if;
+  prev_team := (select previous_team from teams where id = t);
+  lim := coalesce((lg.settings ->> 'keepers')::int, 0);
+  if coalesce(array_length(p_players, 1), 0) > lim then raise exception 'You can keep at most %.', lim; end if;
+  if exists (select 1 from unnest(p_players) p
+             where not exists (select 1 from roster where league_id = lg.previous_id and team_id = prev_team and player_id = p)) then
+    raise exception 'You can only keep players who finished last season on your team.';
+  end if;
+  delete from keepers where league_id = p_league and team_id = t;
+  insert into keepers (league_id, team_id, player_id, position)
+  select p_league, t, r.player_id, r.position from roster r
+  where r.league_id = lg.previous_id and r.team_id = prev_team and r.player_id = any (p_players);
+end $$;
+
+-- ── Commissioner tools ───────────────────────────────────────────────────
+
+create or replace function is_commish(l uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (select 1 from leagues where id = l and commissioner = auth.uid());
+$$;
+
+-- Move any player anywhere: to a team (and slot), or off a roster (p_to null).
+-- Skips waivers and add limits; lineup rules still apply.
+create or replace function commish_move(p_league uuid, p_player text, p_position text, p_to uuid, p_slot text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  cur uuid := (select team_id from roster where league_id = p_league and player_id = p_player);
+  pos text := coalesce((select position from roster where league_id = p_league and player_id = p_player), p_position);
+begin
+  if not is_commish(p_league) then raise exception 'Only the commissioner can do that.'; end if;
+  if p_to is not null and not exists (select 1 from teams where id = p_to and league_id = p_league) then raise exception 'That team isn''t in this league.'; end if;
+  if cur is not null then
+    insert into lineup_log (league_id, team_id, player_id, slot) values (p_league, cur, p_player, null);
+    delete from roster where league_id = p_league and player_id = p_player;
+  end if;
+  if p_to is not null then
+    perform put_player(p_league, p_to, p_player, pos,
+      case when p_slot is not null and slot_takes(p_slot, pos, (select sport from leagues where id = p_league)) then p_slot else landing_slot(p_league, p_to, pos) end);
+    perform check_lineup(p_league, p_to, false);
+  end if;
+  insert into transactions (league_id, team_id, kind, player_id, detail)
+  values (p_league, coalesce(p_to, cur), 'commish', p_player, case when p_to is null then 'Released' else 'Moved by the commissioner' end);
+end $$;
+
+-- Set any team's lineup.
+create or replace function commish_lineup(p_league uuid, p_team uuid, p_moves jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_commish(p_league) then raise exception 'Only the commissioner can do that.'; end if;
+  perform lineup_moves(p_league, p_team, p_moves);
+end $$;
+
+-- Rename a team, put it in a division, fix its waiver spot or budgets.
+create or replace function commish_team(p_team uuid, p_name text, p_division int, p_waiver_rank int, p_faab int, p_budget int)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  l uuid := (select league_id from teams where id = p_team);
+begin
+  if not is_commish(l) then raise exception 'Only the commissioner can do that.'; end if;
+  update teams set name = coalesce(nullif(trim(p_name), ''), name), division = p_division,
+    waiver_rank = coalesce(p_waiver_rank, waiver_rank), faab = coalesce(p_faab, faab), budget = coalesce(p_budget, budget)
+  where id = p_team;
+end $$;
+
+-- Make the pick for whoever is on the clock, any time.
+create or replace function commish_pick(p_league uuid, p_player text, p_position text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  lg leagues;
+begin
+  select * into lg from leagues where id = p_league for update;
+  if not is_commish(p_league) then raise exception 'Only the commissioner can do that.'; end if;
+  if lg.status <> 'drafting' or lg.settings ->> 'draftType' = 'auction' then raise exception 'There''s no snake or linear draft running.'; end if;
+  perform do_pick(p_league, on_clock(p_league), p_player, p_position, false, null);
+end $$;
+
+-- Hand the league to another team's owner.
+create or replace function commish_transfer(p_league uuid, p_team uuid)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not is_commish(p_league) then raise exception 'Only the commissioner can do that.'; end if;
+  update leagues set commissioner = (select owner from teams where id = p_team and league_id = p_league)
+  where id = p_league and exists (select 1 from teams where id = p_team and league_id = p_league);
+end $$;
+
+-- Remove a team before the draft.
+create or replace function commish_remove_team(p_team uuid)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  l uuid := (select league_id from teams where id = p_team);
+begin
+  if not is_commish(l) then raise exception 'Only the commissioner can do that.'; end if;
+  if (select status from leagues where id = l) <> 'setup' then raise exception 'Teams can only be removed before the draft.'; end if;
+  if (select owner from teams where id = p_team) = auth.uid() then raise exception 'That''s your own team.'; end if;
+  delete from teams where id = p_team;
+end $$;
+
 -- The old name, for phones on an older app version.
 create or replace function snake_team(draft_order uuid[], pick_no int) returns uuid
 language sql immutable as $$ select draft_team(draft_order, pick_no, 'snake') $$;
@@ -757,12 +1193,13 @@ declare f text;
 begin
   foreach f in array array['create_league', 'update_league', 'join_league', 'start_draft', 'make_pick', 'set_lineup', 'set_slot', 'add_drop',
     'place_claim', 'cancel_claim', 'process_waivers', 'propose_trade', 'respond_trade', 'cancel_trade', 'review_trade', 'veto_vote',
-    'process_trades', 'record_week', 'rename_team', 'leave_league'] loop
+    'process_trades', 'record_week', 'rename_team', 'leave_league', 'nominate', 'place_bid', 'close_lot', 'new_season', 'set_keepers',
+    'commish_move', 'commish_lineup', 'commish_team', 'commish_pick', 'commish_transfer', 'commish_remove_team'] loop
     execute format('revoke all on function %I from public, anon', f);
     execute format('grant execute on function %I to authenticated', f);
   end loop;
   -- Internal helpers: only callable from the functions above.
-  foreach f in array array['put_player', 'check_lineup', 'drop_to_waivers', 'execute_trade'] loop
+  foreach f in array array['put_player', 'check_lineup', 'drop_to_waivers', 'execute_trade', 'do_pick', 'lineup_moves'] loop
     execute format('revoke all on function %I from public, anon, authenticated', f);
   end loop;
 end $$;
