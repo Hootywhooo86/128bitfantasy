@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>128bit Fantasy — Every league. One arena.</title>
+<meta name="description" content="128bit Fantasy pulls every fantasy team you own into one gamified hub. Sleeper, Yahoo, Fantrax — separated by sport. Coming soon.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0b16;
+    --panel:#141428;
+    --teal:#2dd4bf;
+    --orange:#ff9f1c;
+    --pink:#ff5d8f;
+    --ink:#f4f1ff;
+    --muted:#9a97b8;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    overflow-x:hidden;
+  }
+  /* subtle pixel-dot grid */
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:radial-gradient(rgba(45,212,191,.07) 1px, transparent 1px);
+    background-size:22px 22px;
+  }
+  .wrap{max-width:960px;margin:0 auto;padding:0 20px;position:relative;z-index:1}
+  .pixel{font-family:'Press Start 2P',monospace}
+  /* ---------- nav ---------- */
+  nav{display:flex;justify-content:space-between;align-items:center;padding:22px 0}
+  .logo{display:flex;align-items:center;gap:12px;font-family:'Press Start 2P',monospace;font-size:15px}
+  .logo-mark{
+    width:34px;height:34px;background:var(--teal);display:grid;place-items:center;font-size:18px;
+    box-shadow:0 4px 0 #0e7c6f, 4px 0 0 #0e7c6f, -4px 0 0 #0e7c6f, 0 -4px 0 #0e7c6f;
+    image-rendering:pixelated;
+  }
+  .badge{
+    font-family:'Press Start 2P',monospace;font-size:9px;color:var(--bg);background:var(--orange);
+    padding:8px 10px;letter-spacing:1px;
+    box-shadow:0 4px 0 #a05e00;
+  }
+  /* ---------- hero ---------- */
+  header{text-align:center;padding:70px 0 50px}
+  .eyebrow{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--teal);letter-spacing:2px;margin-bottom:26px}
+  h1{
+    font-family:'Press Start 2P',monospace;
+    font-size:clamp(26px,6vw,54px);line-height:1.35;margin-bottom:26px;
+    text-shadow:0 4px 0 #1a1a33, 4px 0 0 #1a1a33;
+  }
+  h1 .t{color:var(--teal)} h1 .o{color:var(--orange)}
+  .sub{color:var(--muted);font-size:18px;max-width:600px;margin:0 auto 36px;line-height:1.6}
+  /* stamp */
+  .stamp{
+    display:inline-block;transform:rotate(-6deg);margin-bottom:34px;
+    border:3px dashed var(--pink);color:var(--pink);
+    font-family:'Press Start 2P',monospace;font-size:10px;padding:12px 16px;letter-spacing:1px;
+    background:rgba(255,93,143,.06);
+  }
+  /* waitlist form */
+  form.waitlist{display:flex;gap:0;max-width:480px;margin:0 auto;flex-wrap:wrap;justify-content:center}
+  form.waitlist input{
+    flex:1 1 240px;background:var(--panel);border:3px solid var(--teal);color:var(--ink);
+    padding:14px 16px;font-size:15px;font-family:'Inter',sans-serif;outline:none;min-width:0;
+  }
+  form.waitlist input:focus{border-color:var(--orange)}
+  form.waitlist button{
+    font-family:'Press Start 2P',monospace;font-size:11px;background:var(--orange);color:#201100;
+    border:3px solid var(--orange);padding:14px 20px;cursor:pointer;
+    box-shadow:0 5px 0 #a05e00;transition:transform .08s, box-shadow .08s;
+  }
+  form.waitlist button:hover{transform:translateY(2px);box-shadow:0 3px 0 #a05e00}
+  form.waitlist button:active{transform:translateY(5px);box-shadow:0 0 0 #a05e00}
+  .form-note{margin-top:14px;font-size:13px;color:var(--muted)}
+  .form-ok{margin-top:14px;font-size:14px;color:var(--teal);font-weight:600;display:none}
+  /* ---------- features ---------- */
+  section{padding:56px 0}
+  h2{font-family:'Press Start 2P',monospace;font-size:clamp(16px,3.4vw,24px);text-align:center;margin-bottom:40px;line-height:1.5}
+  h2 .o{color:var(--orange)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:18px}
+  .card{
+    background:var(--panel);border:3px solid #26264a;padding:26px 22px;
+    box-shadow:6px 6px 0 #08081a;transition:transform .12s, border-color .12s;
+  }
+  .card:hover{transform:translateY(-4px);border-color:var(--teal)}
+  .card .ico{font-size:30px;margin-bottom:16px;display:block}
+  .card h3{font-family:'Press Start 2P',monospace;font-size:12px;margin-bottom:12px;color:var(--teal);line-height:1.6}
+  .card p{color:var(--muted);font-size:14px;line-height:1.65}
+  /* ---------- strip ---------- */
+  .strip{
+    background:linear-gradient(180deg,#171732,#101024);
+    border-top:3px solid var(--orange);border-bottom:3px solid var(--orange);
+    text-align:center;padding:44px 20px;
+  }
+  .strip .pixel{font-size:12px;color:var(--orange);letter-spacing:2px;display:block;margin-bottom:16px;line-height:1.8}
+  .strip p{color:var(--muted);max-width:560px;margin:0 auto;line-height:1.7;font-size:15px}
+  /* ---------- waitlist section ---------- */
+  .cta{text-align:center}
+  .cta p{color:var(--muted);margin-bottom:26px;line-height:1.7}
+  /* ---------- footer ---------- */
+  footer{border-top:3px solid #26264a;padding:34px 0;text-align:center;color:var(--muted);font-size:13px;line-height:2}
+  footer .fam{font-family:'Press Start 2P',monospace;font-size:9px;letter-spacing:1px;color:var(--ink)}
+  footer .fam span{color:var(--teal)}
+  @media (max-width:560px){
+    form.waitlist button{flex:1 1 100%;margin-top:10px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav>
+    <div class="logo"><span class="logo-mark">🏆</span>128bit Fantasy</div>
+    <span class="badge">COMING SOON</span>
+  </nav>
+
+  <header>
+    <div class="eyebrow">FROM THE 128BIT FAMILY</div>
+    <div class="stamp">★ SLEEPER · YAHOO · FANTRAX ★</div>
+    <h1><span class="t">EVERY LEAGUE.</span><br><span class="o">ONE ARENA.</span></h1>
+    <p class="sub">Every fantasy team you own — Sleeper, Yahoo, Fantrax — in one gamified hub. Separated by sport. Streaks, rivalry quests, and XP for every win.</p>
+
+    <!-- WAITLIST: create a free form at formspree.io and replace YOUR_FORM_ID below, then it just works. -->
+    <form class="waitlist" id="waitlist" action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+      <input type="email" name="email" placeholder="you@example.com" required aria-label="Email address">
+      <input type="hidden" name="_subject" value="128bit Fantasy waitlist signup">
+      <button type="submit">JOIN THE WAITLIST</button>
+    </form>
+    <p class="form-note">Early access + cross-league power rankings. No spam, ever.</p>
+    <p class="form-ok" id="formOk">✓ You're drafted. See you on game day.</p>
+  </header>
+
+  <section>
+    <h2>YOUR LEAGUES, <span class="o">GAMIFIED</span></h2>
+    <div class="grid">
+      <div class="card">
+        <span class="ico">🏈</span>
+        <h3>EVERY SPORT, SEPARATED</h3>
+        <p>NFL, NHL, and everything after — each sport gets its own arena. Your teams stay organized by game, not by app.</p>
+      </div>
+      <div class="card">
+        <span class="ico">🔗</span>
+        <h3>SLEEPER · YAHOO · FANTRAX</h3>
+        <p>Connect every league you play in. One hub for every roster, matchup, and waiver wire — no more app-hopping on Sunday morning.</p>
+      </div>
+      <div class="card">
+        <span class="ico">⚔️</span>
+        <h3>RIVALRY QUESTS</h3>
+        <p>Head-to-head missions, upset bonuses, and streak rewards. Beat your rival, earn XP that flows straight into 128bitlife.</p>
+      </div>
+      <div class="card">
+        <span class="ico">📊</span>
+        <h3>GM DASHBOARD</h3>
+        <p>Lineup health, injury alerts, and trending adds across all your leagues. Never start an empty slot again.</p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<div class="strip">
+  <span class="pixel">BUILT BY A FANTASY JUNKIE, FOR FANTASY JUNKIES</span>
+  <p>128bit Fantasy is being built by a multi-league GM who checks lineups at midnight. Yahoo, Sleeper, Fantrax — all of them, one arena.</p>
+</div>
+
+<div class="wrap">
+  <section class="cta">
+    <h2>BE FIRST <span class="o">IN THE DRAFT</span></h2>
+    <p>Join the waitlist for early access, beta leagues,<br>and strong opinions about waiver priorities.</p>
+    <form class="waitlist" id="waitlist2" action="https://formspree.io/f/YOUR_FORM_ID" method="POST">
+      <input type="email" name="email" placeholder="you@example.com" required aria-label="Email address">
+      <input type="hidden" name="_subject" value="128bit Fantasy waitlist signup">
+      <button type="submit">JOIN THE WAITLIST</button>
+    </form>
+    <p class="form-ok" id="formOk2">✓ You're drafted. See you on game day.</p>
+  </section>
+
+  <footer>
+    <div class="fam"><span>128bit</span>fantasy · <span>128bit</span>fit · <span>128bit</span>play · <span>128bit</span>trip · <span>128bit</span>gold · <span>128bit</span>life</div>
+    128bit Fantasy — part of the 128bit family<br>© 2026 128bit
+  </footer>
+</div>
+
+<script>
+  // If the Formspree ID hasn't been set yet, don't POST into the void —
+  // just confirm locally so the page still feels alive.
+  document.querySelectorAll('form.waitlist').forEach(function(form, i){
+    form.addEventListener('submit', function(e){
+      if (form.action.indexOf('YOUR_FORM_ID') !== -1){
+        e.preventDefault();
+        var ok = document.getElementById(i === 0 ? 'formOk' : 'formOk2');
+        if (ok) ok.style.display = 'block';
+        form.querySelector('input[type=email]').value = '';
+      }
+    });
+  });
+</script>
+</body>
+</html>
