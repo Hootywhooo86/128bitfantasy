@@ -4,10 +4,14 @@ name: APK
 # builds one and attaches it to a GitHub Release, so the download is a plain
 # link that works in a phone browser with no login and no zip to unpack.
 on:
-  # Pushing a version tag builds and releases it. Unlike workflow_dispatch,
-  # this works before the workflow file has reached the default branch.
+  # Three ways to cut a build:
+  # - push a version tag (v0.1.0-alpha.2)
+  # - push a commit whose message contains [apk]; the tag is made for you
+  # - run it by hand (once this file is on the default branch)
+  # The first two work from any branch, before the workflow reaches main.
   push:
     tags: ['v*']
+    branches: ['**']
   workflow_dispatch:
     inputs:
       tag:
@@ -22,12 +26,17 @@ jobs:
   apk:
     name: build and release
     runs-on: ubuntu-latest
+    # Branch pushes build only when asked to, with [apk] in the commit message.
+    if: >-
+      github.event_name != 'push' ||
+      startsWith(github.ref, 'refs/tags/') ||
+      contains(github.event.head_commit.message, '[apk]')
     # Inlined into the JS bundle, so the installed app knows which release it
     # is and Settings → CHECK FOR APP UPDATE can compare it with the newest one.
     env:
       # The typed-in tag on a manual run, the pushed tag otherwise.
-      TAG: ${{ inputs.tag || github.ref_name }}
-      EXPO_PUBLIC_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || format('v0.1.0-alpha.{0}', github.run_number) }}
+      EXPO_PUBLIC_RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || format('v0.1.0-alpha.{0}', github.run_number) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -80,6 +89,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
+          # A new tag from an [apk] commit points at that commit.
+          target_commitish: ${{ github.sha }}
           name: ${{ env.TAG }}
           # Anything with a dash (v0.1.0-alpha.1) is a test build.
           prerelease: ${{ contains(env.TAG, '-') }}
