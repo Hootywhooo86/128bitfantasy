@@ -1,4 +1,4 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachesCornerButton } from '@/components/CoachesCornerButton';
@@ -26,6 +26,9 @@ import { snapshotWithPrefs } from '@/src/sports/prefs';
  * standings to look at it instead; Coaches Corner follows whichever team is
  * on screen.
  */
+/** How often an open team screen re-reads live scores. */
+const LIVE_REFRESH_MS = 60_000;
+
 export default function LeagueScreen() {
   const { provider, id, team } = useLocalSearchParams<{ provider: ProviderId; id: string; team?: string }>();
   const router = useRouter();
@@ -35,13 +38,13 @@ export default function LeagueScreen() {
   const [error, setError] = useState<string | null>(null);
   const [viewing, setViewing] = useState<string | null>(team ?? null);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (quiet = false) => {
     const league = (await cachedLeagues()).find((l) => l.provider === provider && l.id === id);
     if (!league) {
       setError('This league is no longer connected. Sign in again in Settings.');
       return;
     }
-    setLoading(true);
+    if (!quiet) setLoading(true);
     setError(null);
     try {
       setRaw(await fetchSnapshot(league));
@@ -51,6 +54,17 @@ export default function LeagueScreen() {
       setLoading(false);
     }
   }, [provider, id]);
+
+  // Live points: while this screen is open, re-read every minute. Leaving the
+  // screen stops it, so nothing polls in the background.
+  useFocusEffect(
+    useCallback(() => {
+      const t = setInterval(() => {
+        refresh(true);
+      }, LIVE_REFRESH_MS);
+      return () => clearInterval(t);
+    }, [refresh])
+  );
 
   useEffect(() => {
     // Last known state first — instant — then live.
@@ -62,7 +76,7 @@ export default function LeagueScreen() {
 
   if (!raw) {
     return (
-      <Screen section="Team" back onRefresh={refresh} refreshing={loading}>
+      <Screen section="Team" back onRefresh={() => refresh()} refreshing={loading}>
         {error ? <Note tone="error">{error}</Note> : <Empty title="LOADING" body="Reading the league…" />}
       </Screen>
     );
@@ -82,7 +96,7 @@ export default function LeagueScreen() {
   const issues = lineupIssues(roster, league.sport);
 
   return (
-    <Screen section={`${league.sport.toUpperCase()} · ${providerLabel(league.provider)}`} back onRefresh={refresh} refreshing={loading}>
+    <Screen section={`${league.sport.toUpperCase()} · ${providerLabel(league.provider)}`} back onRefresh={() => refresh()} refreshing={loading}>
       <Text style={st.title}>{focus?.name ?? league.name}</Text>
       <Text style={st.meta}>
         {[league.name, focus ? formatRecord(focus.record) : null, focus?.rank ? `#${focus.rank}` : null, league.scoring]

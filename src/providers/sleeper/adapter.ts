@@ -82,7 +82,12 @@ function playerName(id: string, p: SleeperPlayers[string] | undefined): string {
   return n || id;
 }
 
-export function toRoster(r: SleeperRoster, positions: string[], catalog: SleeperPlayers): Roster {
+export function toRoster(
+  r: SleeperRoster,
+  positions: string[],
+  catalog: SleeperPlayers,
+  points: Record<string, number> | null = null
+): Roster {
   // roster_positions includes the bench and IR slots; starters[] lines up with
   // the ones before them, in order.
   const startSlots = positions.filter((p) => p !== 'BN' && p !== 'IR' && p !== 'TAXI');
@@ -101,6 +106,7 @@ export function toRoster(r: SleeperRoster, positions: string[], catalog: Sleeper
       slot,
       proTeam: p?.team ?? null,
       injury: p?.injury_status ?? null,
+      points: points ? num(points[id]) : null,
     };
   };
 
@@ -190,7 +196,9 @@ export function createSleeperAdapter(players: PlayerLookup): ProviderAdapter<Sle
       return {
         league: { ...league, scoring: scoringLabel(raw) ?? league.scoring },
         teams: toTeams(rosters, users),
-        rosters: rosters.map((r) => toRoster(r, raw.roster_positions ?? [], catalog)),
+        rosters: rosters.map((r) =>
+          toRoster(r, raw.roster_positions ?? [], catalog, (matchups ?? []).find((m) => m.roster_id === r.roster_id)?.players_points ?? null)
+        ),
         matchups: toMatchups(matchups ?? [], week ?? 0),
         period: week,
         fetchedAt: Date.now(),

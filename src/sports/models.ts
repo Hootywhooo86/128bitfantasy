@@ -64,6 +64,8 @@ export type RosterPlayer = {
   injury: string | null;
   /** This period's projected points, when the league provider sends one (ESPN does). */
   projected?: number | null;
+  /** Fantasy points scored this period so far, in the league's scoring. Null = not reported. */
+  points?: number | null;
 };
 
 export type Roster = {

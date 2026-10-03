@@ -83,7 +83,7 @@ function groupSlot(group: string | null): Slot {
   return 'starter';
 }
 
-function proPlayer(p: unknown, lineupSlot: string | null, slot: Slot): RosterPlayer | null {
+function proPlayer(p: unknown, lineupSlot: string | null, slot: Slot, leaguePlayer?: unknown): RosterPlayer | null {
   if (!p) return null;
   const injury = pick(p, 'injury');
   return {
@@ -94,6 +94,9 @@ function proPlayer(p: unknown, lineupSlot: string | null, slot: Slot): RosterPla
     slot,
     proTeam: str(pick(p, 'proTeamAbbreviation')),
     injury: str(pick(injury, 'typeFull')) ?? str(pick(injury, 'typeAbbreviaition')) ?? str(pick(injury, 'typeAbbreviation')),
+    // The roster's own scoring period, in the league's scoring.
+    points: num(pick(pick(leaguePlayer, 'viewingActualPoints'), 'value')),
+    projected: num(pick(pick(leaguePlayer, 'viewingProjectedPoints'), 'value')),
   };
 }
 
@@ -104,7 +107,7 @@ export function toFleaRoster(teamId: string, raw: unknown): Roster {
     return arr(pick(g, 'slots'))
       .map((s) => {
         const label = str(pick(pick(s, 'position'), 'label')) ?? (slot === 'bench' ? 'BN' : null);
-        return proPlayer(pick(pick(s, 'leaguePlayer'), 'proPlayer'), label, slot);
+        return proPlayer(pick(pick(s, 'leaguePlayer'), 'proPlayer'), label, slot, pick(s, 'leaguePlayer'));
       })
       .filter((p): p is RosterPlayer => p !== null);
   });

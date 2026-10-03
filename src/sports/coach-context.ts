@@ -38,6 +38,7 @@ function playerLine(p: RosterPlayer, x?: PlayerExtras[string]): string {
   else if (x?.detail) bits.push(`[${x.detail}]`);
   const proj = x?.projection ?? p.projected;
   if (proj != null) bits.push(`proj ${proj.toFixed(1)}${x?.source ? ` (${x.source})` : ''}`);
+  if (p.points != null) bits.push(`scored ${p.points.toFixed(1)} so far`);
   return `- ${bits.join(' ')}`;
 }
 

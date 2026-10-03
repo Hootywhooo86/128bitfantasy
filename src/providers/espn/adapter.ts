@@ -93,6 +93,13 @@ export function toEspnTeams(raw: EspnLeague): Team[] {
   );
 }
 
+/** Points scored this scoring period (statSourceId 0 = actual). */
+export function espnPoints(p: EspnPlayer | undefined, period: number | undefined): number | null {
+  if (!p?.stats || period == null) return null;
+  const row = p.stats.find((st) => st.statSourceId === 0 && st.statSplitTypeId === 1 && st.scoringPeriodId === period);
+  return row?.appliedTotal != null ? Math.round(row.appliedTotal * 100) / 100 : null;
+}
+
 /** ESPN's own projection for this scoring period, in the league's scoring. */
 export function espnProjection(p: EspnPlayer | undefined, period: number | undefined): number | null {
   if (!p?.stats || period == null) return null;
@@ -116,6 +123,7 @@ export function toEspnRosters(raw: EspnLeague, sport: Sport): Roster[] {
         proTeam: p && sport === 'nfl' ? NFL_TEAMS[p.proTeamId] ?? null : null,
         injury: injury && injury !== 'ACTIVE' && injury !== 'NORMAL' ? injury.replace(/_/g, ' ') : null,
         projected: espnProjection(p, raw.scoringPeriodId),
+        points: espnPoints(p, raw.scoringPeriodId),
       };
     }),
   }));

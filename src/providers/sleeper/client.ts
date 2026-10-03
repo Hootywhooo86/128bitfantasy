@@ -62,6 +62,8 @@ export type SleeperMatchup = {
   roster_id: number;
   matchup_id: number | null;
   points: number | null;
+  /** Every rostered player's points this week, bench included. */
+  players_points?: Record<string, number> | null;
 };
 
 export type SleeperPlayer = {

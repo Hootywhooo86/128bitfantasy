@@ -4,7 +4,7 @@
  * Off until the user turns it on and confirms they are 21 or older. Nothing
  * odds-related is fetched or shown while it is off.
  */
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { getJson } from '@/src/providers/http';
 import { corePath, ESPN_SPORT_PATH, parseProps, parseScoreboard, type GameOdds, type PlayerProps } from '@/src/betting/odds';
 import type { Sport } from '@/src/sports/models';
@@ -13,6 +13,8 @@ import { cached } from './storage/player-cache';
 
 const KEY = 'odds_enabled_v1';
 const TEN_MIN = 10 * 60 * 1000;
+/** The scoreboard also drives live game status, so it goes stale fast. */
+const TWO_MIN = 2 * 60 * 1000;
 
 export const RESPONSIBLE_GAMING = {
   line: 'Gambling problem? Call 1-800-GAMBLER. 21+ and present in a state where sports betting is legal.',
@@ -56,9 +58,9 @@ export function slateOdds(sport: Sport): Promise<GameOdds[]> {
     `odds_scoreboard_${sport}`,
     async () =>
       parseScoreboard(
-        await getJson('espn', `https://site.api.espn.com/apis/site/v2/sports/${ESPN_SPORT_PATH[sport]}/scoreboard`, { label: 'Odds' })
+        await getJson('espn', `https://site.api.espn.com/apis/site/v2/sports/${ESPN_SPORT_PATH[sport]}/scoreboard`, { label: 'Scoreboard' })
       ),
-    TEN_MIN
+    TWO_MIN
   );
 }
 
@@ -76,4 +78,22 @@ export async function gameProps(sport: Sport, eventId: string): Promise<Map<stri
     TEN_MIN
   );
   return parseProps(raw);
+}
+
+/**
+ * This week's (or today's) real games, for live status beside each player.
+ * Scores and kickoff times only — no odds are shown from this unless odds
+ * are switched on.
+ */
+export function useSlate(sport: Sport | undefined, refreshKey: unknown = null): GameOdds[] {
+  const [games, setGames] = useState<GameOdds[]>([]);
+  useEffect(() => {
+    if (!sport) return;
+    let live = true;
+    slateOdds(sport).then((g) => live && setGames(g), () => undefined);
+    return () => {
+      live = false;
+    };
+  }, [sport, refreshKey]);
+  return games;
 }

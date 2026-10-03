@@ -6,6 +6,7 @@ import {
   corePath,
   directBetLink,
   eventPage,
+  gameState,
   gameForAbbr,
   gameForTeam,
   hasOdds,
@@ -93,5 +94,17 @@ describe('odds helpers', () => {
     expect(payoutOn10('+170')).toBe(27);
     expect(payoutOn10('-200')).toBe(15);
     expect(payoutOn10(null)).toBeNull();
+  });
+});
+
+describe('game state beside a player', () => {
+  const games = parseScoreboard(scoreboard);
+  it('pre, final, bye and unknown', () => {
+    expect(gameState(games, 'WAS', 'nfl').state).toBe('pre');
+    expect(gameState(games, 'PIT', 'nfl').state).toBe('final');
+    expect(gameState(games, 'ZZZ', 'nfl').state).toBe('bye');
+    expect(gameState(games, 'ZZZ', 'nba').state).toBe('unknown');
+    expect(gameState([], 'WAS', 'nfl').state).toBe('unknown');
+    expect(gameState(games, null, 'nfl').state).toBe('unknown');
   });
 });

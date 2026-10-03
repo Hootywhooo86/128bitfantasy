@@ -132,11 +132,16 @@ export function toMflRosters(
   injuries: Record<string, string>
 ): Roster[] {
   const starters = new Set<string>();
+  const scores = new Map<string, number | null>();
   const live = isObj(liveRaw) && isObj(liveRaw.liveScoring) ? liveRaw.liveScoring : {};
   for (const m of list(live.matchup))
     for (const f of list(m.franchise)) {
       const ps = isObj(f.players) ? list(f.players.player) : [];
-      for (const p of ps) if (str(p.status) === 'starter') starters.add(`${str(f.id)}:${str(p.id)}`);
+      for (const p of ps) {
+        const k = `${str(f.id)}:${str(p.id)}`;
+        if (str(p.status) === 'starter') starters.add(k);
+        scores.set(k, num(p.score));
+      }
     }
   const franchises = isObj(rostersRaw) && isObj(rostersRaw.rosters) ? list(rostersRaw.rosters.franchise) : [];
   return franchises.map((f) => {
@@ -155,6 +160,8 @@ export function toMflRosters(
           slot,
           proTeam: info?.team ?? null,
           injury: injuries[id] ?? null,
+          // Live scoring lists starters; bench players have no live score.
+          points: scores.get(`${fid}:${id}`) ?? null,
         };
       }),
     };

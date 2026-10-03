@@ -236,3 +236,19 @@ export function payoutOn10(odds: string | null): number | null {
   const profit = n > 0 ? (10 * n) / 100 : (10 * 100) / -n;
   return Math.round((10 + profit) * 100) / 100;
 }
+
+export type GameState = 'pre' | 'live' | 'final' | 'bye' | 'unknown';
+
+/** Where a player's real game stands, so 0 points before kickoff never reads as a dud. */
+export function gameState(games: GameOdds[], abbr: string | null, sport: Sport): { state: GameState; game: GameOdds | null } {
+  if (!games.length || !abbr) return { state: 'unknown', game: null };
+  const g = gameForAbbr(games, abbr, sport);
+  // NFL weeks list every game, so no game means a bye. Daily sports list
+  // today only, where "no game" just means not today.
+  if (!g) return { state: sport === 'nfl' ? 'bye' : 'unknown', game: null };
+  const s = g.status.toUpperCase();
+  if (s === 'STATUS_SCHEDULED' || s === 'STATUS_POSTPONED' || s === 'STATUS_DELAYED') return { state: 'pre', game: g };
+  if (s === 'STATUS_FINAL' || s === 'STATUS_FINAL_OT') return { state: 'final', game: g };
+  if (s.startsWith('STATUS_')) return { state: 'live', game: g };
+  return { state: 'unknown', game: g };
+}

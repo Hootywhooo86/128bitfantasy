@@ -119,31 +119,53 @@ function slotOf(pos: string | null): Slot {
   return 'starter';
 }
 
+/** One team array → its roster, reading points when the request asked for player stats. */
+function rosterOfTeam(team: unknown): Roster {
+  const { meta, rest } = teamParts(team);
+  const roster = yMerge(yList(rest.roster)[0] ?? child(rest.roster, '0'));
+  const players = yList(roster.players).map((p): RosterPlayer => {
+    const arr = child(p, 'player');
+    const pm = yMerge(Array.isArray(arr) ? arr[0] : []);
+    const extra = yMerge(Array.isArray(arr) ? arr.slice(1) : []);
+    const sel = yMerge(extra.selected_position);
+    const lineupSlot = str(sel.position);
+    const name = isObj(pm.name) ? str(pm.name.full) : null;
+    return {
+      id: str(pm.player_key) ?? '',
+      name: name ?? 'Player',
+      position: str(pm.display_position),
+      lineupSlot,
+      slot: slotOf(lineupSlot),
+      proTeam: str(pm.editorial_team_abbr)?.toUpperCase() ?? null,
+      injury: str(pm.status_full) ?? str(pm.status),
+      // Only present when the request asked for stats (points leagues).
+      points: num(child(extra.player_points, 'total')),
+    };
+  });
+  return { teamId: str(meta.team_key) ?? '', players };
+}
+
 export function toYahooRosters(raw: unknown): Roster[] {
   const league = child(child(raw, 'fantasy_content'), 'league');
   const body = yMerge(Array.isArray(league) ? league.slice(1) : []);
-  return yList(body.teams).map((t) => {
-    const { meta, rest } = teamParts(child(t, 'team'));
-    const roster = yMerge(yList(rest.roster)[0] ?? child(rest.roster, '0'));
-    const players = yList(roster.players).map((p): RosterPlayer => {
-      const arr = child(p, 'player');
-      const pm = yMerge(Array.isArray(arr) ? arr[0] : []);
-      const extra = yMerge(Array.isArray(arr) ? arr.slice(1) : []);
-      const sel = yMerge(extra.selected_position);
-      const lineupSlot = str(sel.position);
-      const name = isObj(pm.name) ? str(pm.name.full) : null;
-      return {
-        id: str(pm.player_key) ?? '',
-        name: name ?? 'Player',
-        position: str(pm.display_position),
-        lineupSlot,
-        slot: slotOf(lineupSlot),
-        proTeam: str(pm.editorial_team_abbr)?.toUpperCase() ?? null,
-        injury: str(pm.status_full) ?? str(pm.status),
-      };
-    });
-    return { teamId: str(meta.team_key) ?? '', players };
-  });
+  return yList(body.teams).map((t) => rosterOfTeam(child(t, 'team')));
+}
+
+/** team/{key}/roster…/players/stats → that team's roster with points. */
+export function toYahooTeamRoster(raw: unknown): Roster | null {
+  const team = child(child(raw, 'fantasy_content'), 'team');
+  return Array.isArray(team) ? rosterOfTeam(team) : null;
+}
+
+/**
+ * Where a team's live player points come from: the NFL scores by week; the
+ * daily sports by date, so "today" is what is moving.
+ */
+export function yahooPointsPath(teamKey: string, sport: Sport, period: number | null, today = new Date()): string {
+  const key = encodeURIComponent(teamKey);
+  if (sport === 'nfl' && period) return `team/${key}/roster;week=${period}/players/stats;type=week;week=${period}`;
+  const d = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  return `team/${key}/roster;date=${d}/players/stats;type=date;date=${d}`;
 }
 
 export function toYahooMatchups(raw: unknown): { period: number | null; matchups: Matchup[] } {
@@ -210,10 +232,21 @@ export function createYahooAdapter(onRefresh: (c: YahooConn) => Promise<void>): 
       ]);
       const { teams, myTeamId } = toYahooTeams(standings);
       const { period, matchups } = toYahooMatchups(board);
+      const me = myTeamId ?? league.myTeamId;
+      let all = toYahooRosters(rosters);
+      // Live player points cost one request per team, so only for the two
+      // teams that matter right now: mine and this week's opponent. Best
+      // effort — a failure leaves points blank, never the roster.
+      const m = matchups.find((x) => x.home.teamId === me || x.away?.teamId === me);
+      const want = [me, m ? (m.home.teamId === me ? m.away?.teamId : m.home.teamId) : null].filter((x): x is string => !!x);
+      const withPoints = await Promise.all(
+        want.map((k) => get(conn, yahooPointsPath(k, league.sport, period), signal).then(toYahooTeamRoster, () => null))
+      );
+      for (const r of withPoints) if (r) all = all.map((x) => (x.teamId === r.teamId ? r : x));
       return {
-        league: { ...league, myTeamId: myTeamId ?? league.myTeamId },
+        league: { ...league, myTeamId: me },
         teams,
-        rosters: toYahooRosters(rosters),
+        rosters: all,
         matchups,
         period,
         fetchedAt: Date.now(),
