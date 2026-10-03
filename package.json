@@ -1,0 +1,52 @@
+{
+  "name": "128bitfantasy",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "description": "All your fantasy leagues \u2014 Sleeper, Yahoo, Fantrax, ESPN, Fleaflicker \u2014 in one 128bit hub, with Coaches Corner AI",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "expo lint",
+    "build:logo": "node scripts/build-logo.mjs",
+    "build:web": "expo export -p web",
+    "serve:web": "node scripts/serve-web.mjs"
+  },
+  "dependencies": {
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/silkscreen": "^0.4.2",
+    "expo": "~57.0.24",
+    "expo-clipboard": "~57.0.2",
+    "expo-constants": "~57.0.19",
+    "expo-font": "~57.0.4",
+    "expo-linking": "~57.0.10",
+    "expo-router": "~57.0.22",
+    "expo-secure-store": "~57.0.4",
+    "expo-splash-screen": "~57.0.9",
+    "expo-sqlite": "~57.0.3",
+    "expo-status-bar": "~57.0.1",
+    "expo-web-browser": "~57.0.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-svg": "^15.15.5",
+    "react-native-web": "~0.21.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2",
+    "typescript": "~5.9.2",
+    "vitest": "^5.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
