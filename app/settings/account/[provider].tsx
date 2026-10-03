@@ -1,3 +1,5 @@
+import * as Clipboard from 'expo-clipboard';
+import { getRandomBytes } from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -12,7 +14,9 @@ import { accessLabel, PROVIDER_INFO } from '@/src/providers/info';
 import { getConnection, removeConnection, saveConnection } from '@/lib/storage/connections';
 import { providerLabel } from '@/src/providers/http';
 import type { Connection } from '@/src/providers/types';
+import { reportText, yahooCheck, type CheckStep } from '@/src/providers/yahoo/diagnose';
 import { exchangeYahooCode, yahooAuthorizeUrl } from '@/src/providers/yahoo/oauth';
+import { makeVerifier } from '@/src/providers/yahoo/pkce';
 import { syncLeagues } from '@/src/sports/hub';
 import { SPORTS, type ProviderId, type Sport } from '@/src/sports/models';
 
@@ -27,6 +31,10 @@ export default function Account() {
   const [info, setInfo] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
   const usedCode = useRef<string | null>(null);
+  // Public Yahoo apps: the PKCE verifier for the sign-in in progress.
+  const verifier = useRef<string | null>(null);
+  const [check, setCheck] = useState<CheckStep[] | null>(null);
+  const [checking, setChecking] = useState(false);
 
   // One bag of form fields; each provider uses the ones it needs.
   const [f, setF] = useState({
@@ -95,8 +103,9 @@ export default function Account() {
       }
       case 'yahoo': {
         const clientId = sanitizeApiKey(f.clientId);
-        const clientSecret = sanitizeApiKey(f.clientSecret);
-        if (!clientId || !clientSecret) throw new Error('Enter your Yahoo app Client ID and Client Secret first.');
+        // Empty for a Public app — it signs in with PKCE instead.
+        const clientSecret = sanitizeApiKey(f.clientSecret) ?? '';
+        if (!clientId) throw new Error('Enter your Yahoo app Client ID first.');
         const code = f.code.trim();
         // A Yahoo code works exactly once. If this one was already traded for a
         // login (or no new code was pasted), keep that login and just re-sync —
@@ -106,7 +115,7 @@ export default function Account() {
         if (!code) throw new Error('Tap SIGN IN WITH YAHOO, approve, then paste the code Yahoo shows you.');
         if (code === usedCode.current) throw new Error('That code was already used. Tap SIGN IN WITH YAHOO for a fresh one.');
         usedCode.current = code;
-        const t = await exchangeYahooCode(clientId, clientSecret, code);
+        const t = await exchangeYahooCode(clientId, clientSecret || null, code, verifier.current);
         const conn = { provider, clientId, clientSecret, ...t } as const;
         // Saved the moment Yahoo hands over the login, before anything else
         // can fail, so a retry never needs the spent code.
@@ -127,12 +136,26 @@ export default function Account() {
       const mine = res.errors.find((e) => e.provider === provider);
       if (mine) throw new Error(mine.message);
       const n = res.leagues.filter((l) => l.provider === provider).length;
-      setInfo(`${n} league${n === 1 ? '' : 's'} found.${warn ? ` ${warn}` : ''}`);
+      setInfo(
+        `${n} league${n === 1 ? '' : 's'} found.${warn ? ` ${warn}` : ''}${
+          n === 0 && provider === 'yahoo' ? ' Signed in, but Yahoo sent no current leagues — RUN YAHOO CHECK below shows what it answered.' : ''
+        }`
+      );
       if (n > 0 && !warn) router.back();
     } catch (e) {
       setError(describeNetworkFailure(e, `the ${providerLabel(provider)} request`));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function runCheck() {
+    setChecking(true);
+    try {
+      const c = await getConnection('yahoo');
+      setCheck(await yahooCheck(c, sanitizeApiKey(f.clientId) ?? '', sanitizeApiKey(f.clientSecret) ?? ''));
+    } finally {
+      setChecking(false);
     }
   }
 
@@ -232,12 +255,22 @@ export default function Account() {
         <Card>
           <CardHead title="YAHOO" note="Official API · OAuth" />
           <Field label="CLIENT ID" value={f.clientId} onChangeText={set('clientId')} />
-          <Field label="CLIENT SECRET" value={f.clientSecret} onChangeText={set('clientSecret')} secureTextEntry />
+          <Field
+            label="CLIENT SECRET (EMPTY FOR A PUBLIC APP)"
+            value={f.clientSecret}
+            onChangeText={set('clientSecret')}
+            secureTextEntry
+            hint="Public Yahoo apps have no secret — leave this empty and the app signs in with PKCE. Paste a secret only if your Yahoo app shows one."
+          />
           <Button
             label="SIGN IN WITH YAHOO"
             kind="ghost"
             disabled={!f.clientId.trim()}
-            onPress={() => WebBrowser.openBrowserAsync(yahooAuthorizeUrl(f.clientId))}
+            onPress={() => {
+              // A Public app has no secret, so this sign-in carries a PKCE proof.
+              verifier.current = sanitizeApiKey(f.clientSecret) ? null : makeVerifier(getRandomBytes);
+              WebBrowser.openBrowserAsync(yahooAuthorizeUrl(sanitizeApiKey(f.clientId) ?? f.clientId, verifier.current));
+            }}
           />
           <Field label="CODE FROM YAHOO" value={f.code} onChangeText={set('code')} placeholder="paste the code here" />
         </Card>
@@ -246,6 +279,20 @@ export default function Account() {
       {error ? <Note tone="error">{error}</Note> : null}
       {info ? <Note>{info}</Note> : null}
       <Button label={existing ? 'SAVE & SYNC' : 'SIGN IN'} onPress={save} busy={busy} />
+      {provider === 'yahoo' ? (
+        <Card style={{ marginTop: 14 }}>
+          <CardHead title="YAHOO CHECK" note="step by step" />
+          <Text style={st.body}>Not working? This tries each step of the Yahoo sign-in and league read, and shows which one fails and what Yahoo answered.</Text>
+          <Button label="RUN YAHOO CHECK" kind="ghost" busy={checking} onPress={runCheck} />
+          {check?.map((c) => (
+            <Text key={c.step} style={[st.checkLine, { color: c.ok ? colors.win : colors.loss }]}>
+              {`${c.ok ? '✓' : '✗'} ${c.step}: `}
+              <Text style={st.checkDetail}>{c.detail}</Text>
+            </Text>
+          ))}
+          {check ? <Button label="COPY REPORT" kind="ghost" onPress={() => Clipboard.setStringAsync(reportText(check))} /> : null}
+        </Card>
+      ) : null}
       {existing ? <Button label="SIGN OUT" kind="danger" onPress={disconnect} /> : null}
     </Screen>
   );
@@ -307,5 +354,7 @@ const st = themedStyles(() =>
     link: { borderWidth: 1, borderColor: colors.accent, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 12 },
     linkT: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.accent },
     health: { fontFamily: fonts.pixel, fontSize: 7.5, letterSpacing: 0.8, marginTop: 14, lineHeight: 13 },
+    checkLine: { fontSize: 13, fontFamily: fonts.bodySemi, marginTop: 8, lineHeight: 19 },
+    checkDetail: { color: colors.textMuted, fontFamily: fonts.body },
   })
 );
