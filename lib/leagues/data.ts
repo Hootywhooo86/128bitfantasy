@@ -4,7 +4,7 @@
  * on the server; this file only shapes rows and calls them.
  */
 import type { RealtimeChannel } from '@supabase/supabase-js';
-import { autoPick, draftState, rankPool, shuffleOrder, slotTakes } from '@/src/leagues/draft';
+import { autoPick, draftState, pickKey, rankPool, shuffleOrder, type PickOwners } from '@/src/leagues/draft';
 import type { HostedSport, StatLine } from '@/src/leagues/scoring';
 import { roundRobin, type LineupMove } from '@/src/leagues/season';
 import { defaultSettings, withDefaults } from '@/src/leagues/settings';
@@ -22,7 +22,9 @@ import { hosted, must } from './client';
 
 type Row = Record<string, unknown>;
 
-const toLeague = (r: Row): HostedLeague & { seasonStart: string | null; lastPickAt: string | null } => ({
+const toLeague = (
+  r: Row
+): HostedLeague & { seasonStart: string | null; lastPickAt: string | null; previousId: string | null; lot: Lot | null; nominateIdx: number } => ({
   id: String(r.id),
   name: String(r.name),
   sport: r.sport as HostedSport,
@@ -36,11 +38,17 @@ const toLeague = (r: Row): HostedLeague & { seasonStart: string | null; lastPick
   createdAt: String(r.created_at),
   seasonStart: (r.season_start as string | null) ?? null,
   lastPickAt: (r.last_pick_at as string | null) ?? null,
+  previousId: (r.previous_id as string | null) ?? null,
+  lot: (r.lot as Lot | null) ?? null,
+  nominateIdx: Number(r.nominate_idx ?? 0),
 });
+
+/** The player up for auction right now. */
+export type Lot = { player: string; position: string; bid: number; team: string; nominator: string; ends_at: string };
 
 export type LeagueRow = ReturnType<typeof toLeague>;
 
-export type TeamRow = HostedTeam & { waiverRank: number | null; faab: number };
+export type TeamRow = HostedTeam & { waiverRank: number | null; faab: number; budget: number; division: number | null; previousTeam: string | null };
 
 export type Claim = { id: string; playerId: string; position: string; dropPlayer: string | null; bid: number; status: string; note: string | null; createdAt: string };
 
@@ -50,6 +58,8 @@ export type Trade = {
   toTeam: string;
   give: string[];
   get: string[];
+  givePicks: string[];
+  getPicks: string[];
   note: string | null;
   status: 'proposed' | 'accepted' | 'completed' | 'rejected' | 'cancelled' | 'vetoed' | 'failed';
   reviewUntil: string | null;
@@ -67,6 +77,10 @@ export type LeagueBundle = {
   myClaims: Claim[];
   trades: Trade[];
   activity: Activity[];
+  /** Pick owners after trades (pickKey → team). */
+  pickOwners: PickOwners;
+  /** Keepers chosen for this season (player → team). */
+  keepers: Map<string, string>;
   picks: DraftPick[];
   roster: (RosterEntry & { position: string })[];
   matchups: HostedMatchup[];
@@ -89,7 +103,7 @@ export async function leagueBundle(id: string): Promise<LeagueBundle> {
   const sb = await hosted();
   const { data: s } = await sb.auth.getSession();
   const me = s.session?.user.id ?? null;
-  const [lg, teams, picks, roster, matchups, log, weeks, waivers, claims, trades, votes, activity] = await Promise.all([
+  const [lg, teams, picks, roster, matchups, log, weeks, waivers, claims, trades, votes, activity, owners, kept] = await Promise.all([
     sb.from('leagues').select('*').eq('id', id).single(),
     sb.from('teams').select('*').eq('league_id', id),
     sb.from('picks').select('*').eq('league_id', id).order('pick_no'),
@@ -103,6 +117,8 @@ export async function leagueBundle(id: string): Promise<LeagueBundle> {
     sb.from('trades').select('*').eq('league_id', id).order('created_at', { ascending: false }).limit(50),
     sb.from('trade_votes').select('*'),
     sb.from('transactions').select('*').eq('league_id', id).order('at', { ascending: false }).limit(60),
+    sb.from('pick_owners').select('*').eq('league_id', id),
+    sb.from('keepers').select('*').eq('league_id', id),
   ]);
   const opt = <T,>(res: { data: T | null; error: unknown }): T | [] => (res.error ? [] : (res.data ?? []));
   const voteRows = opt(votes) as Row[];
@@ -115,6 +131,9 @@ export async function leagueBundle(id: string): Promise<LeagueBundle> {
     name: String(r.name),
     waiverRank: r.waiver_rank == null ? null : Number(r.waiver_rank),
     faab: Number(r.faab ?? 0),
+    budget: Number(r.budget ?? 0),
+    division: r.division == null ? null : Number(r.division),
+    previousTeam: (r.previous_team as string | null) ?? null,
   }));
   return {
     league,
@@ -136,6 +155,8 @@ export async function leagueBundle(id: string): Promise<LeagueBundle> {
       toTeam: String(r.to_team),
       give: (r.give as string[]) ?? [],
       get: (r.get as string[]) ?? [],
+      givePicks: (r.give_picks as string[] | null) ?? [],
+      getPicks: (r.get_picks as string[] | null) ?? [],
       note: (r.note as string | null) ?? null,
       status: r.status as Trade['status'],
       reviewUntil: (r.review_until as string | null) ?? null,
@@ -150,6 +171,8 @@ export async function leagueBundle(id: string): Promise<LeagueBundle> {
       detail: (r.detail as string | null) ?? null,
       at: String(r.at),
     })),
+    pickOwners: new Map((opt(owners) as Row[]).map((r) => [pickKey(String(r.season), Number(r.round), String(r.original_team)), String(r.owner)])),
+    keepers: new Map((opt(kept) as Row[]).map((r) => [String(r.player_id), String(r.team_id)])),
     picks: ((must(picks) ?? []) as Row[]).map((r) => ({
       leagueId: id,
       pickNo: Number(r.pick_no),
@@ -228,32 +251,114 @@ export async function startDraft(b: LeagueBundle, seasonStart: string): Promise<
   must(await sb.rpc('start_draft', { p_league: b.league.id, p_order: order, p_schedule: schedule, p_season_start: seasonStart }));
 }
 
-/** The slot a new pick lands in: an open starting slot it fits, else the bench. */
-export function landingSlot(b: LeagueBundle, teamId: string, position: string): string {
-  const s = b.league.settings;
-  const used: Record<string, number> = {};
-  for (const r of b.roster) if (r.teamId === teamId) used[r.slot] = (used[r.slot] ?? 0) + 1;
-  const exact = Object.keys(s.slots).filter((k) => k === position);
-  const flex = Object.keys(s.slots).filter((k) => k !== position && slotTakes(k, position));
-  for (const slot of [...exact, ...flex]) if ((used[slot] ?? 0) < s.slots[slot]) return slot;
-  return 'BN';
+/** The draft-state options for a league: its season, traded picks, keepers. */
+export function draftOpts(b: LeagueBundle) {
+  return { season: b.league.season, owners: b.pickOwners, firstSeason: !b.league.previousId, keptIds: [...b.keepers.keys()] };
 }
 
-export async function draftPlayer(b: LeagueBundle, p: PoolPlayer, forTeam?: string): Promise<void> {
+export async function draftPlayer(b: LeagueBundle, p: PoolPlayer): Promise<void> {
   const sb = await hosted();
-  const team = forTeam ?? b.myTeamId ?? '';
-  must(await sb.rpc('make_pick', { p_league: b.league.id, p_player: p.id, p_position: p.position, p_slot: landingSlot(b, team, p.position) }));
+  // The server puts him in the first spot he fits.
+  must(await sb.rpc('make_pick', { p_league: b.league.id, p_player: p.id, p_position: p.position }));
+}
+
+/** The best fit for a team, by last season in this league's scoring. */
+export function bestFor(b: LeagueBundle, pool: PoolPlayer[], team: string, round: number, rounds: number): PoolPlayer | null {
+  const byId = new Map(pool.map((p) => [p.id, p]));
+  const taken = new Set([...b.roster.map((r) => r.playerId), ...b.picks.map((p) => p.playerId)]);
+  const mine = b.roster.filter((r) => r.teamId === team).map((r) => byId.get(r.playerId)).filter((p): p is PoolPlayer => !!p);
+  return autoPick(rankPool(pool, b.league.settings.scoring), taken, mine, b.league.settings, round, b.league.sport, rounds);
 }
 
 /** Picks for the team on the clock when its time is up (the server checks the clock). */
 export async function autoDraft(b: LeagueBundle, pool: PoolPlayer[]): Promise<PoolPlayer | null> {
-  const st = draftState(b.league.draftOrder, b.league.settings, b.picks);
+  const st = draftState(b.league.draftOrder, b.league.settings, b.picks, draftOpts(b));
   if (!st.onClock || !st.round) return null;
-  const byId = new Map(pool.map((p) => [p.id, p]));
-  const mine = b.roster.filter((r) => r.teamId === st.onClock).map((r) => byId.get(r.playerId)).filter((p): p is PoolPlayer => !!p);
-  const pick = autoPick(rankPool(pool, b.league.settings.scoring), st.taken, mine, b.league.settings, st.round);
-  if (pick) await draftPlayer(b, pick, st.onClock);
+  const pick = bestFor(b, pool, st.onClock, st.round, st.rounds);
+  if (pick) await draftPlayer(b, pick);
   return pick;
+}
+
+// ── Auction ──
+
+export async function nominate(leagueId: string, p: PoolPlayer, bid: number): Promise<void> {
+  const sb = await hosted();
+  must(await sb.rpc('nominate', { p_league: leagueId, p_player: p.id, p_position: p.position, p_bid: bid }));
+}
+
+export async function placeBid(leagueId: string, amount: number): Promise<void> {
+  const sb = await hosted();
+  must(await sb.rpc('place_bid', { p_league: leagueId, p_amount: amount }));
+}
+
+/** Sells the player once the clock is out. Harmless if someone else got there first. */
+export async function closeLot(leagueId: string): Promise<void> {
+  const sb = await hosted();
+  const { error } = await sb.rpc('close_lot', { p_league: leagueId });
+  if (error && !/still open/i.test(String(error.message))) throw new Error(String(error.message));
+}
+
+// ── Seasons and keepers ──
+
+export async function newSeason(leagueId: string, season: string): Promise<string> {
+  const sb = await hosted();
+  return String(must(await sb.rpc('new_season', { p_league: leagueId, p_season: season })));
+}
+
+export async function setKeepers(leagueId: string, players: string[]): Promise<void> {
+  const sb = await hosted();
+  must(await sb.rpc('set_keepers', { p_league: leagueId, p_players: players }));
+}
+
+/** Last season's final rosters, for choosing keepers. */
+export async function previousRoster(previousId: string): Promise<{ teamId: string; playerId: string; position: string }[]> {
+  const sb = await hosted();
+  const rows = (must(await sb.from('roster').select('*').eq('league_id', previousId)) ?? []) as Row[];
+  return rows.map((r) => ({ teamId: String(r.team_id), playerId: String(r.player_id), position: String(r.position) }));
+}
+
+// ── Commissioner ──
+
+export async function commishMove(leagueId: string, playerId: string, position: string, toTeam: string | null, slot: string | null): Promise<void> {
+  const sb = await hosted();
+  must(await sb.rpc('commish_move', { p_league: leagueId, p_player: playerId, p_position: position, p_to: toTeam, p_slot: slot }));
+}
+
+export async function commishLineup(leagueId: string, teamId: string, moves: { player: string; slot: string }[]): Promise<void> {
+  const sb = await hosted();
+  must(await sb.rpc('commish_lineup', { p_league: leagueId, p_team: teamId, p_moves: moves }));
+}
+
+export async function commishTeam(
+  teamId: string,
+  edit: { name?: string; division: number | null; waiverRank?: number | null; faab?: number | null; budget?: number | null }
+): Promise<void> {
+  const sb = await hosted();
+  must(
+    await sb.rpc('commish_team', {
+      p_team: teamId,
+      p_name: edit.name ?? '',
+      p_division: edit.division,
+      p_waiver_rank: edit.waiverRank ?? null,
+      p_faab: edit.faab ?? null,
+      p_budget: edit.budget ?? null,
+    })
+  );
+}
+
+export async function commishPick(leagueId: string, p: PoolPlayer): Promise<void> {
+  const sb = await hosted();
+  must(await sb.rpc('commish_pick', { p_league: leagueId, p_player: p.id, p_position: p.position }));
+}
+
+export async function commishTransfer(leagueId: string, teamId: string): Promise<void> {
+  const sb = await hosted();
+  must(await sb.rpc('commish_transfer', { p_league: leagueId, p_team: teamId }));
+}
+
+export async function commishRemoveTeam(teamId: string): Promise<void> {
+  const sb = await hosted();
+  must(await sb.rpc('commish_remove_team', { p_team: teamId }));
 }
 
 export async function setSlot(leagueId: string, playerId: string, slot: string): Promise<void> {
@@ -291,9 +396,27 @@ export async function processDue(leagueId: string): Promise<void> {
   await Promise.all([sb.rpc('process_waivers', { p_league: leagueId }), sb.rpc('process_trades', { p_league: leagueId })]);
 }
 
-export async function proposeTrade(leagueId: string, toTeam: string, give: string[], get: string[], note: string): Promise<void> {
+export async function proposeTrade(
+  leagueId: string,
+  toTeam: string,
+  give: string[],
+  get: string[],
+  note: string,
+  givePicks: string[] = [],
+  getPicks: string[] = []
+): Promise<void> {
   const sb = await hosted();
-  must(await sb.rpc('propose_trade', { p_league: leagueId, p_to: toTeam, p_give: give, p_get: get, p_note: note }));
+  must(
+    await sb.rpc('propose_trade', {
+      p_league: leagueId,
+      p_to: toTeam,
+      p_give: give,
+      p_get: get,
+      p_note: note,
+      p_give_picks: givePicks,
+      p_get_picks: getPicks,
+    })
+  );
 }
 
 export async function respondTrade(tradeId: string, accept: boolean): Promise<void> {

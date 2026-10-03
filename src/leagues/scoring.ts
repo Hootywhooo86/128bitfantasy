@@ -2,10 +2,19 @@
  * 128BIT LEAGUES scoring: a stat line times a points table.
  *
  * A stat line is whatever the stat source counted, keyed by our own stat
- * names (NHL) or Sleeper's (NFL). The rules map the same keys to points, so a
- * commissioner can change any value without touching code.
+ * names (NHL, MLB) or Sleeper's (NFL, NBA). The rules map the same keys to
+ * points, so a commissioner can change any value without touching code.
  */
-export type HostedSport = 'nhl' | 'nfl';
+export type HostedSport = 'nhl' | 'nfl' | 'mlb' | 'nba';
+
+export const HOSTED_SPORTS: { id: HostedSport; label: string }[] = [
+  { id: 'nhl', label: 'HOCKEY' },
+  { id: 'nfl', label: 'FOOTBALL' },
+  { id: 'nba', label: 'BASKETBALL' },
+  { id: 'mlb', label: 'BASEBALL' },
+];
+
+export const SPORT_NAMES: Record<HostedSport, string> = { nhl: 'Hockey', nfl: 'Football', nba: 'Basketball', mlb: 'Baseball' };
 
 export type StatLine = Record<string, number>;
 export type ScoringRules = Record<string, number>;
@@ -77,7 +86,43 @@ export const NFL_SCORING: ScoringRules = {
   pts_allow_35p: -4,
 };
 
-export const DEFAULT_SCORING: Record<HostedSport, ScoringRules> = { nhl: NHL_SCORING, nfl: NFL_SCORING };
+/**
+ * Baseball, ESPN's points defaults: total bases, runs, RBI, walks and steals
+ * for hitters (a strikeout costs one); outs, strikeouts, wins and saves for
+ * pitchers, minus hits, walks and earned runs.
+ */
+export const MLB_SCORING: ScoringRules = {
+  singles: 1,
+  doubles: 2,
+  triples: 3,
+  homeRuns: 4,
+  runs: 1,
+  rbi: 1,
+  walks: 1,
+  stolenBases: 1,
+  strikeouts: -1,
+  outs: 1,
+  pitcherStrikeouts: 1,
+  wins: 2,
+  losses: -2,
+  saves: 5,
+  holds: 2,
+  hitsAllowed: -1,
+  walksAllowed: -1,
+  earnedRuns: -2,
+};
+
+/** Basketball, Yahoo's points defaults. Keys are Sleeper's stat names. */
+export const NBA_SCORING: ScoringRules = {
+  pts: 1,
+  reb: 1.2,
+  ast: 1.5,
+  stl: 3,
+  blk: 3,
+  to: -1,
+};
+
+export const DEFAULT_SCORING: Record<HostedSport, ScoringRules> = { nhl: NHL_SCORING, nfl: NFL_SCORING, mlb: MLB_SCORING, nba: NBA_SCORING };
 
 /** Names for the scoring-settings screen; anything not listed shows its key. */
 export const STAT_LABELS: Record<string, string> = {
@@ -88,7 +133,7 @@ export const STAT_LABELS: Record<string, string> = {
   hits: 'Hit',
   blockedShots: 'Blocked shot',
   plusMinus: 'Plus/minus',
-  wins: 'Goalie win',
+  wins: 'Win (goalie or pitcher)',
   saves: 'Save',
   goalsAgainst: 'Goal against',
   shutouts: 'Shutout',
@@ -107,6 +152,32 @@ export const STAT_LABELS: Record<string, string> = {
   fum_rec: 'Fumble recovery',
   def_td: 'Defensive TD',
   safe: 'Safety',
+  singles: 'Single',
+  doubles: 'Double',
+  triples: 'Triple',
+  homeRuns: 'Home run',
+  runs: 'Run',
+  rbi: 'RBI',
+  walks: 'Walk (batter)',
+  stolenBases: 'Stolen base',
+  strikeouts: 'Strikeout (batter)',
+  outs: 'Out recorded (3 = 1 IP)',
+  pitcherStrikeouts: 'Strikeout (pitcher)',
+  losses: 'Loss',
+  holds: 'Hold',
+  hitsAllowed: 'Hit allowed',
+  walksAllowed: 'Walk allowed',
+  earnedRuns: 'Earned run',
+  qualityStarts: 'Quality start',
+  pts: 'Point',
+  reb: 'Rebound',
+  ast: 'Assist',
+  stl: 'Steal',
+  blk: 'Block',
+  to: 'Turnover',
+  tpm: '3-pointer made',
+  dd: 'Double-double',
+  td: 'Triple-double',
 };
 
 /** Fantasy points for one stat line, to the hundredth. Stats the rules don't mention score 0. */

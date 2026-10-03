@@ -127,7 +127,7 @@ describe('draft', () => {
   it('fills exact slots before UTIL', () => {
     expect(openSlots({ C: 1, UTIL: 1 }, ['C'])).toEqual(['UTIL']);
     expect(openSlots({ C: 1, UTIL: 1 }, ['C', 'C'])).toEqual([]);
-    expect(openSlots(NFL_SLOTS, ['RB', 'RB', 'RB'])).not.toContain('FLEX');
+    expect(openSlots(NFL_SLOTS, ['RB', 'RB', 'RB'], 'nfl')).not.toContain('FLEX');
   });
 
   it('auto-picks the best player who fills a need', () => {

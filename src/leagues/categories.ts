@@ -12,8 +12,8 @@ export type CategoryDef = {
   label: string;
   /** Lower wins (GAA, turnovers). */
   lowerBetter?: boolean;
-  /** A ratio of two summed stats, times `scale`. */
-  ratio?: { num: string; den: string; scale?: number };
+  /** A ratio of summed stats (several numerator stats add up, as in WHIP), times `scale`. */
+  ratio?: { num: string | string[]; den: string; scale?: number };
   /** Decimal places shown. */
   digits?: number;
 };
@@ -50,12 +50,42 @@ export const CATEGORIES: Record<HostedSport, CategoryDef[]> = {
     { key: 'int', label: 'Def INT' },
     { key: 'fgm', label: 'FG Made' },
   ],
+  mlb: [
+    { key: 'runs', label: 'R' },
+    { key: 'homeRuns', label: 'HR' },
+    { key: 'rbi', label: 'RBI' },
+    { key: 'stolenBases', label: 'SB' },
+    { key: 'avg', label: 'AVG', ratio: { num: 'hits', den: 'atBats' }, digits: 3 },
+    { key: 'hits', label: 'H' },
+    { key: 'walks', label: 'BB' },
+    { key: 'wins', label: 'W' },
+    { key: 'saves', label: 'SV' },
+    { key: 'holds', label: 'HLD' },
+    { key: 'pitcherStrikeouts', label: 'K' },
+    { key: 'qualityStarts', label: 'QS' },
+    { key: 'era', label: 'ERA', lowerBetter: true, ratio: { num: 'earnedRuns', den: 'outs', scale: 27 }, digits: 2 },
+    { key: 'whip', label: 'WHIP', lowerBetter: true, ratio: { num: ['hitsAllowed', 'walksAllowed'], den: 'outs', scale: 3 }, digits: 2 },
+  ],
+  nba: [
+    { key: 'fgPct', label: 'FG%', ratio: { num: 'fgm', den: 'fga' }, digits: 3 },
+    { key: 'ftPct', label: 'FT%', ratio: { num: 'ftm', den: 'fta' }, digits: 3 },
+    { key: 'tpm', label: '3PTM' },
+    { key: 'pts', label: 'PTS' },
+    { key: 'reb', label: 'REB' },
+    { key: 'ast', label: 'AST' },
+    { key: 'stl', label: 'STL' },
+    { key: 'blk', label: 'BLK' },
+    { key: 'to', label: 'TO', lowerBetter: true },
+    { key: 'dd', label: 'DD' },
+  ],
 };
 
-/** The usual 10-category hockey league (Yahoo default) and a basic football set. */
+/** The usual sets: 10-cat hockey, 5x5 baseball, 9-cat basketball (Yahoo defaults), a basic football set. */
 export const DEFAULT_CATEGORIES: Record<HostedSport, string[]> = {
   nhl: ['goals', 'assists', 'plusMinus', 'pim', 'ppGoals', 'shots', 'wins', 'gaa', 'savePct', 'shutouts'],
   nfl: ['pass_yd', 'pass_td', 'pass_int', 'rush_yd', 'rush_td', 'rec', 'rec_yd', 'rec_td', 'fum_lost'],
+  mlb: ['runs', 'homeRuns', 'rbi', 'stolenBases', 'avg', 'wins', 'saves', 'pitcherStrikeouts', 'era', 'whip'],
+  nba: ['fgPct', 'ftPct', 'tpm', 'pts', 'reb', 'ast', 'stl', 'blk', 'to'],
 };
 
 export function categoryDefs(sport: HostedSport, keys: string[]): CategoryDef[] {
@@ -68,14 +98,15 @@ export function catValue(def: CategoryDef, totals: StatLine): number | null {
   if (def.ratio) {
     const den = totals[def.ratio.den] ?? 0;
     if (!den) return null;
-    return ((totals[def.ratio.num] ?? 0) / den) * (def.ratio.scale ?? 1);
+    const num = (Array.isArray(def.ratio.num) ? def.ratio.num : [def.ratio.num]).reduce((a, k) => a + (totals[k] ?? 0), 0);
+    return (num / den) * (def.ratio.scale ?? 1);
   }
   return totals[def.key] ?? 0;
 }
 
 export function formatCat(def: CategoryDef, v: number | null): string {
   if (v == null) return '—';
-  if (def.key === 'savePct') return v.toFixed(3).replace(/^0/, '');
+  if (['savePct', 'avg', 'fgPct', 'ftPct'].includes(def.key)) return v.toFixed(3).replace(/^0/, '');
   return def.digits ? v.toFixed(def.digits) : String(Math.round(v * 10) / 10);
 }
 

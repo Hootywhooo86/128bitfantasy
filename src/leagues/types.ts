@@ -10,19 +10,35 @@ export type RosterSlots = Record<string, number>;
 
 export const NHL_SLOTS: RosterSlots = { C: 2, LW: 2, RW: 2, D: 4, UTIL: 1, G: 2 };
 export const NFL_SLOTS: RosterSlots = { QB: 1, RB: 2, WR: 2, TE: 1, FLEX: 1, K: 1, DEF: 1 };
+/** Yahoo's default baseball lineup. */
+export const MLB_SLOTS: RosterSlots = { C: 1, '1B': 1, '2B': 1, '3B': 1, SS: 1, OF: 3, UTIL: 2, SP: 2, RP: 2, P: 4 };
+/** Yahoo's default basketball lineup. */
+export const NBA_SLOTS: RosterSlots = { PG: 1, SG: 1, G: 1, SF: 1, PF: 1, F: 1, C: 2, UTIL: 2 };
 
-export const DEFAULT_SLOTS: Record<HostedSport, RosterSlots> = { nhl: NHL_SLOTS, nfl: NFL_SLOTS };
-export const DEFAULT_BENCH: Record<HostedSport, number> = { nhl: 4, nfl: 6 };
+export const DEFAULT_SLOTS: Record<HostedSport, RosterSlots> = { nhl: NHL_SLOTS, nfl: NFL_SLOTS, mlb: MLB_SLOTS, nba: NBA_SLOTS };
+export const DEFAULT_BENCH: Record<HostedSport, number> = { nhl: 4, nfl: 6, mlb: 5, nba: 3 };
 
-/** Which player positions each slot takes. A slot not listed takes its own position only. */
-export const SLOT_ACCEPTS: Record<string, string[]> = {
-  UTIL: ['C', 'LW', 'RW', 'D'],
-  F: ['C', 'LW', 'RW'],
-  FLEX: ['RB', 'WR', 'TE'],
-  SUPERFLEX: ['QB', 'RB', 'WR', 'TE'],
-  BN: ['*'],
-  IR: ['*'],
+/** Flexible slots and what they take, per sport. Any slot not listed takes its own position only. */
+const FLEX_SLOTS: Record<HostedSport, Record<string, string[] | '*'>> = {
+  nhl: { UTIL: ['C', 'LW', 'RW', 'D'], F: ['C', 'LW', 'RW'] },
+  nfl: { FLEX: ['RB', 'WR', 'TE'], SUPERFLEX: ['QB', 'RB', 'WR', 'TE'] },
+  mlb: { UTIL: ['C', '1B', '2B', '3B', 'SS', 'OF', 'DH'], CI: ['1B', '3B'], MI: ['2B', 'SS'], P: ['SP', 'RP'] },
+  nba: { UTIL: '*', G: ['PG', 'SG'], F: ['SF', 'PF'] },
 };
+
+export function isFlexSlot(slot: string, sport: HostedSport): boolean {
+  return slot in FLEX_SLOTS[sport];
+}
+
+/**
+ * Whether a lineup slot takes a player. Players can list several positions
+ * ("SF/PF"); any one that fits will do. Matches slot_takes in schema.sql.
+ */
+export function slotTakes(slot: string, position: string, sport: HostedSport = 'nhl'): boolean {
+  if (slot === 'BN' || slot === 'IR') return true;
+  const flex = FLEX_SLOTS[sport][slot];
+  return position.split('/').some((p) => p === slot || flex === '*' || (Array.isArray(flex) && flex.includes(p)));
+}
 
 /**
  * How a league decides who's winning.
@@ -55,7 +71,7 @@ export const usesCategories = (f: LeagueFormat) => f === 'h2h_cats' || f === 'h2
 
 export type WaiverType = 'rolling' | 'faab' | 'none';
 export type TradeReview = 'none' | 'commissioner' | 'vote';
-export type DraftType = 'snake' | 'linear';
+export type DraftType = 'snake' | 'linear' | 'auction';
 
 export type LeagueSettings = {
   format: LeagueFormat;
@@ -91,6 +107,15 @@ export type LeagueSettings = {
   };
   /** Adds per team in any 7 days (0 = unlimited). */
   maxAddsPerWeek: number;
+  /** Division names; empty = no divisions. Division winners get the top playoff seeds. */
+  divisions: string[];
+  /** Players each team may keep into next season (0 = redraft; the whole roster = dynasty). */
+  keepers: number;
+  /** Rounds in drafts after the first season; null = roster size minus keepers. */
+  draftRounds: number | null;
+  /** Auction drafts: each team's budget, and seconds a bid stays open. */
+  auctionBudget: number;
+  bidSeconds: number;
 };
 
 export type LeagueStatus = 'setup' | 'drafting' | 'season' | 'done';
@@ -112,7 +137,7 @@ export type HostedLeague = {
   createdAt: string;
 };
 
-export type HostedTeam = { id: string; leagueId: string; owner: string; name: string };
+export type HostedTeam = { id: string; leagueId: string; owner: string; name: string; division?: number | null };
 
 export type DraftPick = { leagueId: string; pickNo: number; teamId: string; playerId: string; madeAt: string; auto: boolean };
 
@@ -125,7 +150,7 @@ export type HostedMatchup = { leagueId: string; week: number; home: string; away
 export type PoolPlayer = {
   id: string;
   name: string;
-  /** Fantasy position: C, LW, RW, D, G / QB, RB, WR, TE, K, DEF. */
+  /** Fantasy position(s): C, LW, RW, D, G / QB, RB, WR, TE, K, DEF / C, 1B, 2B, 3B, SS, OF, DH, SP, RP / PG, SG, SF, PF, C. Several as "SF/PF". */
   position: string;
   /** Current pro team abbreviation, or null for a free agent. */
   team: string | null;

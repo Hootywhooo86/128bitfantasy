@@ -4,12 +4,13 @@
  */
 import type { League, LeagueSnapshot, Matchup, Roster, RosterPlayer, Team } from '@/src/sports/models';
 import { categoryDefs, h2hCats } from './categories';
+import type { HostedSport } from './scoring';
 import { isStarting, teamWeek, type GameStat, type LineupMove } from './season';
 import { leagueTable, matchupsForWeek, type WeekRow } from './standings';
 import { FORMAT_LABELS, type HostedMatchup, type HostedTeam, type LeagueSettings, type PoolPlayer, type RosterEntry } from './types';
 
 export type HostedInput = {
-  league: { id: string; name: string; sport: 'nhl' | 'nfl'; season: string; status: string; settings: LeagueSettings };
+  league: { id: string; name: string; sport: HostedSport; season: string; status: string; settings: LeagueSettings };
   teams: HostedTeam[];
   roster: (RosterEntry & { position: string })[];
   matchups: HostedMatchup[];
@@ -19,7 +20,7 @@ export type HostedInput = {
 };
 
 export function asLeague(
-  i: { league: { id: string; name: string; sport: 'nhl' | 'nfl'; season: string; settings?: Partial<LeagueSettings> | null }; myTeamId: string | null; teamCount: number | null }
+  i: { league: { id: string; name: string; sport: HostedSport; season: string; settings?: Partial<LeagueSettings> | null }; myTeamId: string | null; teamCount: number | null }
 ): League {
   const f = i.league.settings?.format;
   return {
@@ -87,7 +88,8 @@ export function hostedSnapshot(i: HostedInput, pool: Map<string, PoolPlayer>, we
 
   const defs = categoryDefs(sport, s.categories);
   const cats = s.format === 'h2h_cats' || s.format === 'h2h_most_cats';
-  const matchups: Matchup[] = matchupsForWeek(sport, s, ids, i.matchups, i.weekScores, week, i.league.id).map((m) => {
+  const divisionOf = new Map(i.teams.map((t) => [t.id, t.division ?? null]));
+  const matchups: Matchup[] = matchupsForWeek(sport, s, ids, i.matchups, i.weekScores, week, i.league.id, divisionOf).map((m) => {
     const a = weekBy.get(m.home);
     const b = m.away ? weekBy.get(m.away) : null;
     // Category formats show categories won, the way the scoreboard reads.

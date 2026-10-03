@@ -114,6 +114,26 @@ export function leagueTable(
   return sorted.map((r, i) => ({ ...r, rank: i + 1 }));
 }
 
+/**
+ * Playoff seeds: with divisions, each division's best team first (in
+ * standings order), then everyone else by standings.
+ */
+export function playoffSeeds(table: TableRow[], n: number, divisionOf?: Map<string, number | null | undefined>): string[] {
+  const order = table.map((r) => r.teamId);
+  if (!divisionOf || ![...divisionOf.values()].some((d) => d != null)) return order.slice(0, n);
+  const winners: string[] = [];
+  const seen = new Set<number>();
+  for (const t of order) {
+    const d = divisionOf.get(t);
+    if (d != null && !seen.has(d)) {
+      seen.add(d);
+      winners.push(t);
+    }
+  }
+  const top = winners.slice(0, n);
+  return [...top, ...order.filter((t) => !top.includes(t))].slice(0, n);
+}
+
 export function playoffRounds(teams: number): number {
   return teams >= 2 ? Math.ceil(Math.log2(teams)) : 0;
 }
@@ -190,7 +210,8 @@ export function matchupsForWeek(
   schedule: HostedMatchup[],
   weeks: WeekRow[],
   week: number,
-  leagueId = ''
+  leagueId = '',
+  divisionOf?: Map<string, number | null | undefined>
 ): HostedMatchup[] {
   if (!isH2H(s.format)) return [];
   if (week <= s.weeks) return schedule.filter((m) => m.week === week);
@@ -200,9 +221,7 @@ export function matchupsForWeek(
   // Seeds only exist once every regular week is in.
   const recorded = new Set(weeks.map((w) => w.week));
   for (let w = 1; w <= s.weeks; w++) if (!recorded.has(w)) return [];
-  const seeds = leagueTable(sport, s, teamIds, schedule, weeks)
-    .slice(0, n)
-    .map((r) => r.teamId);
+  const seeds = playoffSeeds(leagueTable(sport, s, teamIds, schedule, weeks), n, divisionOf);
   return playoffPairs(seeds, round, playoffWinner(sport, s, weeks, seeds), s.weeks).map(([home, away]) => ({ leagueId, week, home, away }));
 }
 
@@ -212,7 +231,8 @@ export function champion(
   s: Pick<LeagueSettings, 'format' | 'categories' | 'weeks' | 'playoffTeams'>,
   teamIds: string[],
   schedule: HostedMatchup[],
-  weeks: WeekRow[]
+  weeks: WeekRow[],
+  divisionOf?: Map<string, number | null | undefined>
 ): string | null {
   if (!isH2H(s.format) || s.playoffTeams < 2) {
     const last = s.weeks;
@@ -222,9 +242,9 @@ export function champion(
   const n = Math.min(s.playoffTeams, teamIds.length);
   const rounds = playoffRounds(n);
   const finalWeek = s.weeks + rounds;
-  const [fin] = matchupsForWeek(sport, s, teamIds, schedule, weeks, finalWeek);
+  const [fin] = matchupsForWeek(sport, s, teamIds, schedule, weeks, finalWeek, '', divisionOf);
   if (!fin) return null;
   if (!fin.away) return fin.home;
-  const seeds = leagueTable(sport, s, teamIds, schedule, weeks).slice(0, n).map((r) => r.teamId);
+  const seeds = playoffSeeds(leagueTable(sport, s, teamIds, schedule, weeks), n, divisionOf);
   return playoffWinner(sport, s, weeks, seeds)(finalWeek, fin.home, fin.away);
 }

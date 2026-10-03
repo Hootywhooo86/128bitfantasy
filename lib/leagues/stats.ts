@@ -2,7 +2,9 @@
  * The stat feeds behind 128BIT LEAGUES scoring, fetched and cached.
  *
  * Hockey: NHL web API (rosters, schedule, box scores) + NHL stats API.
+ * Baseball: MLB Stats API (rosters, schedule, box scores, season totals).
  * Football: Sleeper weekly stats + the ESPN scoreboard for kickoff times.
+ * Basketball: Sleeper per-game stats + the ESPN scoreboard for tip-off times.
  * A finished game's box score never changes, so it is kept for good; live
  * ones are re-read at most once a minute.
  */
@@ -10,6 +12,9 @@ import { getJsonItem, setJsonItem } from '@/lib/storage/kv';
 import { cached, sleeperPlayers } from '@/lib/storage/player-cache';
 import { parseScoreboard } from '@/src/betting/odds';
 import { getJson } from '@/src/providers/http';
+import { sleeper } from '@/src/providers/sleeper/client';
+import { abbrMap, buildMlbPool, MLB_API, parseMlbBoxscore, parseMlbSchedule } from '@/src/leagues/mlb';
+import { buildNbaPool, ESPN_TO_SLEEPER_NBA, parseNbaWeek, SLEEPER_NBA, SLEEPER_NBA_SEASON, sleeperNbaWeek } from '@/src/leagues/nba';
 import { buildNflPool, parseSleeperWeek, SLEEPER_STATS } from '@/src/leagues/nfl';
 import {
   buildNhlPool,
@@ -24,7 +29,7 @@ import {
   type NhlGameState,
 } from '@/src/leagues/nhl';
 import type { HostedSport, StatLine } from '@/src/leagues/scoring';
-import { nflWeekOf, nflWeekStart, teamGames, weekOf, weekRange, type GameStat, type PlayerGame } from '@/src/leagues/season';
+import { nflWeekOf, nflWeekStart, teamGames, weekOf, weekRange, type GameState, type GameStat, type PlayerGame } from '@/src/leagues/season';
 import type { PoolPlayer } from '@/src/leagues/types';
 
 const DAY = 86_400_000;
@@ -39,6 +44,14 @@ function statsUrl(kind: 'skater/summary' | 'skater/realtime' | 'goalie/summary',
 /** Everyone who can be drafted, with last season's totals. Cached a day. */
 export function playerPool(sport: HostedSport, season: string): Promise<PoolPlayer[]> {
   return cached(`hosted_pool_v1_${sport}_${season}`, async () => {
+    if (sport === 'mlb') return mlbPool(season);
+    if (sport === 'nba') {
+      const [catalog, last] = await Promise.all([
+        sleeper.players('nba'),
+        get(`${SLEEPER_NBA_SEASON}/${Number(season) - 1}`, 'Last season stats').catch(() => ({})),
+      ]);
+      return buildNbaPool(catalog as Parameters<typeof buildNbaPool>[0], last);
+    }
     if (sport === 'nfl') {
       const [catalog, last] = await Promise.all([
         sleeperPlayers('nfl'),
@@ -159,6 +172,122 @@ async function nflWeek(season: string, leagueStart: string, week: number, pool: 
   return { stats, games };
 }
 
+// ── Baseball ──
+
+const mlbTeams = () => cached('mlb_teams_v1', async () => [...abbrMap(await get(`${MLB_API}/teams?sportId=1`, 'MLB teams'))], DAY * 7);
+
+async function mlbPool(season: string): Promise<PoolPlayer[]> {
+  const abbr = new Map(await mlbTeams());
+  const prev = Number(season) - 1;
+  const statsUrl = (group: 'hitting' | 'pitching') =>
+    `${MLB_API}/stats?stats=season&group=${group}&season=${prev}&sportId=1&limit=3000&playerPool=ALL`;
+  const [hitting, pitching] = await Promise.all([get(statsUrl('hitting'), 'MLB hitting stats'), get(statsUrl('pitching'), 'MLB pitching stats')]);
+  const rosters = await Promise.all(
+    [...abbr].map(([id, team]) =>
+      get(`${MLB_API}/teams/${id}/roster?rosterType=40Man`, `${team} roster`).then(
+        (json) => ({ team, json }),
+        () => null
+      )
+    )
+  );
+  const ok = rosters.filter((r): r is { team: string; json: unknown } => !!r);
+  return buildMlbPool(ok.length >= 26 ? ok : [], hitting, pitching, abbr);
+}
+
+/** A finished box score is kept for good; a live one is re-read at most once a minute. */
+async function keptBox(key: string, final: boolean, load: () => Promise<Map<string, StatLine>>): Promise<Map<string, StatLine>> {
+  const kept = await getJsonItem<[string, StatLine][]>(`${key}_final`);
+  if (kept) return new Map(kept);
+  const lines = await cached(`${key}_live`, async () => [...(await load())] as [string, StatLine][], final ? 0 : MINUTE);
+  if (final) await setJsonItem(`${key}_final`, lines);
+  return new Map(lines);
+}
+
+async function mlbWeek(seasonStart: string, week: number, playerIds: Set<string>): Promise<WeekStats> {
+  const { from, to } = weekRange(seasonStart, week);
+  const abbr = new Map(await mlbTeams());
+  const last = new Date(to.getTime() - DAY);
+  const sched = await cached(
+    `mlb_sched_v1_${ymd(from)}`,
+    async () => parseMlbSchedule(await get(`${MLB_API}/schedule?sportId=1&startDate=${ymd(from)}&endDate=${ymd(last)}`, 'MLB schedule'), abbr),
+    MINUTE
+  );
+  const inWeek = sched.filter((g) => {
+    const t = Date.parse(g.start);
+    return t >= from.getTime() && t < to.getTime();
+  });
+  const now = Date.now();
+  const started = inWeek.filter((g) => g.state !== 'pre' || Date.parse(g.start) <= now);
+  const stats: GameStat[] = [];
+  await Promise.all(
+    started.map(async (g) => {
+      const lines = await keptBox(`mlb_box_v1_${g.id}`, g.state === 'final', async () =>
+        parseMlbBoxscore(await get(`${MLB_API}/game/${g.id}/boxscore`, 'MLB box score'), g.state === 'final')
+      ).catch(() => null);
+      if (!lines) return;
+      for (const [pid, line] of lines) if (playerIds.has(pid)) stats.push({ playerId: pid, start: g.start, line });
+    })
+  );
+  return { stats, games: teamGames(inWeek, now) };
+}
+
+// ── Basketball ──
+
+async function nbaSeasonStart(): Promise<string> {
+  const st = await cached('sleeper_state_nba', () => get<{ season_start_date?: string }>('https://api.sleeper.app/v1/state/nba', 'NBA week'), DAY / 4);
+  return st.season_start_date ?? `${new Date().getUTCFullYear()}-10-20`;
+}
+
+/** Tip-off times and game states for one date, keyed by Sleeper's team abbreviation. */
+async function nbaTips(date: string): Promise<Map<string, PlayerGame>> {
+  const games = await cached(
+    `espn_nba_${date}`,
+    async () =>
+      parseScoreboard(await get(`https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=${date.replace(/-/g, '')}`, 'NBA scoreboard')),
+    2 * MINUTE
+  ).catch(() => []);
+  const out = new Map<string, PlayerGame>();
+  for (const g of games) {
+    const s = g.status.toUpperCase();
+    const state: GameState = /FINAL/.test(s) ? 'final' : /PROGRESS|HALFTIME|END_PERIOD/.test(s) ? 'live' : 'pre';
+    const h = ESPN_TO_SLEEPER_NBA[g.home.abbr] ?? g.home.abbr;
+    const a = ESPN_TO_SLEEPER_NBA[g.away.abbr] ?? g.away.abbr;
+    out.set(h, { state, start: g.startsAt, opponent: a });
+    out.set(a, { state, start: g.startsAt, opponent: h });
+  }
+  return out;
+}
+
+async function nbaWeek(season: string, seasonStart: string, week: number, playerIds: Set<string>): Promise<WeekStats> {
+  const { from, to } = weekRange(seasonStart, week);
+  const start = await nbaSeasonStart();
+  const days: string[] = [];
+  for (let t = from.getTime(); t < to.getTime(); t += DAY) days.push(ymd(new Date(t)));
+  // Our weeks and Sleeper's both start on Mondays, but a week can still touch two of Sleeper's.
+  const sleeperWeeks = [...new Set([sleeperNbaWeek(start, from), sleeperNbaWeek(start, new Date(to.getTime() - DAY))])];
+  const rows = (
+    await Promise.all(
+      sleeperWeeks.map((w) =>
+        cached(`sleeper_nba_${season}_${w}`, async () => parseNbaWeek(await get(`${SLEEPER_NBA}/${season}/${w}?season_type=regular`, 'NBA stats')), MINUTE)
+      )
+    )
+  ).flat();
+  const tips = new Map(await Promise.all(days.map(async (d) => [d, await nbaTips(d)] as const)));
+  const stats: GameStat[] = [];
+  for (const r of rows) {
+    if (!playerIds.has(r.playerId) || !days.includes(r.date)) continue;
+    // Locks at tip-off; with no tip time, 7pm Eastern on the game date.
+    const tip = tips.get(r.date)?.get(r.team)?.start ?? `${r.date}T23:00:00Z`;
+    stats.push({ playerId: r.playerId, start: tip, line: r.line });
+  }
+  // Each game once (the map has it under both teams), then the usual pick per team.
+  const list = [...tips.values()].flatMap((m) =>
+    [...m].filter(([team, g]) => team < (g.opponent ?? '')).map(([team, g]) => ({ start: g.start, state: g.state, home: team, away: g.opponent ?? '' }))
+  );
+  const games = teamGames(list, Date.now());
+  return { stats, games };
+}
+
 /** Stats for every rostered player in one league week. */
 export async function weekStats(
   sport: HostedSport,
@@ -168,12 +297,22 @@ export async function weekStats(
   pool: Map<string, PoolPlayer>,
   playerIds: Set<string>
 ): Promise<WeekStats> {
-  return sport === 'nhl' ? nhlWeek(seasonStart, week, playerIds) : nflWeek(season, seasonStart, week, pool, playerIds);
+  switch (sport) {
+    case 'nhl':
+      return nhlWeek(seasonStart, week, playerIds);
+    case 'mlb':
+      return mlbWeek(seasonStart, week, playerIds);
+    case 'nba':
+      return nbaWeek(season, seasonStart, week, playerIds);
+    default:
+      return nflWeek(season, seasonStart, week, pool, playerIds);
+  }
 }
 
 /** The league week right now. */
 export async function currentWeek(sport: HostedSport, seasonStart: string, now = new Date()): Promise<number> {
-  if (sport === 'nhl') return weekOf(seasonStart, now);
+  // Hockey, baseball and basketball play Monday-to-Sunday weeks; football uses NFL weeks.
+  if (sport !== 'nfl') return weekOf(seasonStart, now);
   const start = await nflSeasonStart();
   return nflWeekOf(start, now) - nflWeekOf(start, new Date(seasonStart)) + 1;
 }

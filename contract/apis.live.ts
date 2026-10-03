@@ -186,3 +186,41 @@ describe('128BIT LEAGUES stat feeds', () => {
     expect(off.length / scored.length).toBeLessThan(0.03);
   }, 120_000);
 });
+
+describe('128BIT LEAGUES baseball and basketball feeds', () => {
+  it('MLB teams, season stats, rosters, schedule and a box score parse', async () => {
+    const { abbrMap, buildMlbPool, MLB_API, parseMlbBoxscore, parseMlbSchedule } = await import('@/src/leagues/mlb');
+    const abbr = abbrMap(await getJson('bit128', `${MLB_API}/teams?sportId=1`));
+    expect(abbr.size).toBe(30);
+    const url = (g: string) => `${MLB_API}/stats?stats=season&group=${g}&season=2026&sportId=1&limit=3000&playerPool=ALL`;
+    const [hitting, pitching, roster] = await Promise.all([
+      getJson('bit128', url('hitting'), { timeoutMs: 60_000 }),
+      getJson('bit128', url('pitching'), { timeoutMs: 60_000 }),
+      getJson('bit128', `${MLB_API}/teams/113/roster?rosterType=40Man`),
+    ]);
+    const pool = buildMlbPool([{ team: 'CIN', json: roster }], hitting, pitching, abbr);
+    expect(pool.length).toBeGreaterThan(30);
+    expect(pool.some((p) => p.position === 'SP' && (p.seasonLine.pitcherStrikeouts ?? 0) > 50)).toBe(true);
+    expect(pool.some((p) => p.position !== 'SP' && p.position !== 'RP' && (p.seasonLine.homeRuns ?? 0) > 5)).toBe(true);
+    const games = parseMlbSchedule(await getJson('bit128', `${MLB_API}/schedule?sportId=1&startDate=2026-09-14&endDate=2026-09-20`), abbr);
+    expect(games.length).toBeGreaterThan(50);
+    const lines = parseMlbBoxscore(await getJson('bit128', `${MLB_API}/game/${games[0].id}/boxscore`), true);
+    expect(lines.size).toBeGreaterThan(15);
+  }, 120_000);
+
+  it('Sleeper NBA players, season totals and per-game rows parse', async () => {
+    const { buildNbaPool, parseNbaWeek, SLEEPER_NBA, SLEEPER_NBA_SEASON } = await import('@/src/leagues/nba');
+    const { sleeper } = await import('@/src/providers/sleeper/client');
+    const [catalog, season, week] = await Promise.all([
+      sleeper.players('nba'),
+      getJson('bit128', `${SLEEPER_NBA_SEASON}/2025`, { timeoutMs: 60_000 }),
+      getJson('bit128', `${SLEEPER_NBA}/2025/10?season_type=regular`, { timeoutMs: 60_000 }),
+    ]);
+    const pool = buildNbaPool(catalog as Parameters<typeof buildNbaPool>[0], season);
+    expect(pool.length).toBeGreaterThan(300);
+    expect(pool.filter((p) => (p.seasonLine.pts ?? 0) > 1000).length).toBeGreaterThan(20);
+    const rows = parseNbaWeek(week);
+    expect(rows.length).toBeGreaterThan(500);
+    expect(rows.every((r) => /^\d{4}-\d{2}-\d{2}$/.test(r.date) && r.team)).toBe(true);
+  }, 120_000);
+});

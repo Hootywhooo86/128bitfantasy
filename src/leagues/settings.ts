@@ -28,6 +28,30 @@ export const SLOT_CHOICES: Record<HostedSport, { slot: string; note: string; max
     { slot: 'K', note: 'Kicker', max: 2 },
     { slot: 'DEF', note: 'Team defense', max: 2 },
   ],
+  mlb: [
+    { slot: 'C', note: 'Catcher', max: 2 },
+    { slot: '1B', note: 'First base', max: 2 },
+    { slot: '2B', note: 'Second base', max: 2 },
+    { slot: '3B', note: 'Third base', max: 2 },
+    { slot: 'SS', note: 'Shortstop', max: 2 },
+    { slot: 'CI', note: '1B or 3B', max: 2 },
+    { slot: 'MI', note: '2B or SS', max: 2 },
+    { slot: 'OF', note: 'Outfield', max: 6 },
+    { slot: 'UTIL', note: 'Any hitter', max: 4 },
+    { slot: 'SP', note: 'Starting pitcher', max: 7 },
+    { slot: 'RP', note: 'Relief pitcher', max: 7 },
+    { slot: 'P', note: 'Any pitcher', max: 9 },
+  ],
+  nba: [
+    { slot: 'PG', note: 'Point guard', max: 2 },
+    { slot: 'SG', note: 'Shooting guard', max: 2 },
+    { slot: 'G', note: 'PG or SG', max: 3 },
+    { slot: 'SF', note: 'Small forward', max: 2 },
+    { slot: 'PF', note: 'Power forward', max: 2 },
+    { slot: 'F', note: 'SF or PF', max: 3 },
+    { slot: 'C', note: 'Center', max: 3 },
+    { slot: 'UTIL', note: 'Anyone', max: 4 },
+  ],
 };
 
 export function defaultSettings(sport: HostedSport): LeagueSettings {
@@ -40,14 +64,22 @@ export function defaultSettings(sport: HostedSport): LeagueSettings {
     categories: [...DEFAULT_CATEGORIES[sport]],
     draftType: 'snake',
     pickSeconds: 90,
-    // NHL regular season is ~25 weeks: 21 + 3 playoff rounds fits. NFL: 14 + 3 fits week 17.
-    weeks: sport === 'nhl' ? 21 : 14,
+    // Regular season + 3 playoff rounds fits each sport's calendar (NFL: 14 + 3 = week 17).
+    weeks: SEASON_WEEKS[sport],
     playoffTeams: 4,
     waivers: { type: 'rolling', days: 2, budget: 100 },
     trades: { review: 'commissioner', reviewHours: 24, vetoVotes: 4, deadline: null },
     maxAddsPerWeek: 0,
+    divisions: [],
+    keepers: 0,
+    draftRounds: null,
+    auctionBudget: 200,
+    bidSeconds: 20,
   };
 }
+
+/** Regular-season weeks that leave room for 3 playoff rounds. */
+const SEASON_WEEKS: Record<HostedSport, number> = { nhl: 21, nfl: 14, mlb: 22, nba: 19 };
 
 /**
  * Older leagues (and anything partly filled in) get every missing setting
@@ -91,6 +123,15 @@ export function settingsProblems(sport: HostedSport, s: LeagueSettings, maxTeams
   if (s.bench < 0 || s.bench > 15) out.push('Bench must be 0 to 15.');
   if (s.ir < 0 || s.ir > 5) out.push('IR must be 0 to 5.');
   if (sport === 'nhl' && !s.slots.G) out.push('Hockey lineups need at least one G.');
+  if (sport === 'mlb' && !(s.slots.SP || s.slots.RP || s.slots.P)) out.push('Baseball lineups need at least one pitcher spot.');
+  if (s.divisions.length === 1 || s.divisions.length > 4) out.push('Use 2 to 4 divisions, or none.');
+  if (s.divisions.some((d) => !d.trim())) out.push('Every division needs a name.');
+  if (s.keepers < 0 || s.keepers > n + s.bench) out.push('Keepers must be 0 up to the roster size.');
+  if (s.draftRounds != null && (s.draftRounds < 1 || s.draftRounds > n + s.bench)) out.push('Draft rounds must be 1 up to the roster size.');
+  if (s.draftType === 'auction' && (s.auctionBudget < n + s.bench || s.auctionBudget > 1000)) {
+    out.push(`Auction budget must be at least $1 per roster spot (${n + s.bench}) and at most $1000.`);
+  }
+  if (s.draftType === 'auction' && (s.bidSeconds < 5 || s.bidSeconds > 120)) out.push('Bid clock must be 5 to 120 seconds.');
   if (s.weeks < 1 || s.weeks > 26) out.push('Regular season must be 1 to 26 weeks.');
   if (isH2H(s.format) && s.playoffTeams > maxTeams) out.push(`Playoffs can't have more teams (${s.playoffTeams}) than the league (${maxTeams}).`);
   if (isH2H(s.format) && s.playoffTeams === 1) out.push('Playoffs need 0 or at least 2 teams.');
