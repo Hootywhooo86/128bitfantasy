@@ -45,7 +45,18 @@
 - **When a player counts.** Every lineup move is logged with the server's clock. A game counts for a player only if he was in a starting slot when the game began. Moving someone in late does nothing for that game, so the app doesn't need to enforce locks.
 - **How standings are stored.** A finished week's totals are recorded by the first phone that works them out. Standings are built from those totals.
 - **Draft timing.** If someone runs out the clock, anyone in the league can auto-pick for them. The server checks that the time is really up.
+- **Waivers.** A dropped player sits on waivers for the league's waiver days. Claims are private. When his time is up, whoever opens the league next settles it:
+  - FAAB: highest bid wins, ties to waiver order.
+  - Rolling: best waiver order wins, and that team goes to the back.
+- **Trades.** Offers are accepted or declined by the other team. Then, depending on the league:
+  - Instant: it goes through.
+  - Commissioner: the commissioner can approve or veto during the review window, and it goes through when the window ends.
+  - League vote: enough veto votes from other teams kill it.
+
+  If a player has moved or a roster would overflow, the trade fails instead.
+- **Settings.** The commissioner can change anything before the draft. After it, format, lineup, bench, categories, weeks and draft type lock. Scoring, IR, playoffs, waivers and trades can still change.
+- **Upgrading.** Re-running `schema.sql` on an existing project adds the new tables and keeps every league.
 
 ## Tests
 
-`supabase/test/flow.sql` plays a whole league through every function as three users. It runs in CI against Postgres 16 on every pull request.
+`supabase/test/flow.sql` plays a whole league through the draft as three users. `supabase/test/moves.sql` covers the rest: lineups, IR, both waiver types, the add limit, all three trade-review modes, the deadline and settings locks. Both run in CI against Postgres 16 on every pull request.

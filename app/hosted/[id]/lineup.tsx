@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, CardHead, Empty, Note, Screen } from '@/components/ui';
 import { poolMap } from '@/lib/leagues/adapter';
-import { leagueBundle, setSlot, type LeagueBundle } from '@/lib/leagues/data';
+import { leagueBundle, setLineup, type LeagueBundle } from '@/lib/leagues/data';
 import { colors, fonts, themedStyles } from '@/lib/theme';
 import { slotTakes } from '@/src/leagues/draft';
 import type { PoolPlayer } from '@/src/leagues/types';
@@ -53,14 +53,17 @@ export default function Lineup() {
     setBusy(true);
     setError(null);
     try {
-      const cap = slot === 'BN' || slot === 'IR' ? Infinity : s.slots[slot] ?? 0;
+      const cap = slot === 'BN' ? Infinity : slot === 'IR' ? s.ir : (s.slots[slot] ?? 0);
       const there = inSlot(slot).filter((r) => r.playerId !== sel.playerId);
-      if (there.length >= cap) {
+      const moves: { player: string; slot: string }[] = [];
+      if (there.length >= cap && there[0]) {
         // Swap: the one already there takes the picked player's old slot if he fits it.
         const out = there[0];
-        await setSlot(b.league.id, out.playerId, slotTakes(sel.slot, out.position) ? sel.slot : 'BN');
+        moves.push({ player: out.playerId, slot: slotTakes(sel.slot, out.position) ? sel.slot : 'BN' });
       }
-      await setSlot(b.league.id, sel.playerId, slot);
+      moves.push({ player: sel.playerId, slot });
+      // One call, checked together, so a swap between two full spots works.
+      await setLineup(b.league.id, moves);
       setB(await leagueBundle(b.league.id));
       setPicked(null);
       // Refresh the team screen's copy so it shows the new lineup.
@@ -75,12 +78,12 @@ export default function Lineup() {
 
   return (
     <Screen section="Set Lineup" back>
-      <Note>Tap a player, then tap where he goes. A game counts if he was in a starting spot when it began.</Note>
+      <Note>Tap a player, then tap where he goes. A game counts if he was in a starting spot when it began. IR spots are extra room — put injured players there to free a roster spot.</Note>
       {error ? <Note tone="error">{error}</Note> : null}
       {slotOrder.map((slot) => {
         const here = inSlot(slot);
-        const cap = slot === 'BN' || slot === 'IR' ? null : s.slots[slot];
-        if (!here.length && cap == null && slot === 'IR') return null;
+        const cap = slot === 'BN' ? null : slot === 'IR' ? s.ir : s.slots[slot];
+        if (slot === 'IR' && !s.ir && !here.length) return null;
         const canTake = !!sel && sel.slot !== slot && (slot === 'BN' || slot === 'IR' || slotTakes(slot, sel.position));
         return (
           <Card key={slot} style={canTake ? { borderColor: colors.accent } : undefined}>

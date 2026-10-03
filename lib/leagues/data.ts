@@ -5,12 +5,11 @@
  */
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { autoPick, draftState, rankPool, shuffleOrder, slotTakes } from '@/src/leagues/draft';
-import type { HostedSport } from '@/src/leagues/scoring';
+import type { HostedSport, StatLine } from '@/src/leagues/scoring';
 import { roundRobin, type LineupMove } from '@/src/leagues/season';
-import { isH2H } from '@/src/leagues/types';
 import { defaultSettings, withDefaults } from '@/src/leagues/settings';
-import type { StatLine } from '@/src/leagues/scoring';
 import {
+  isH2H,
   type DraftPick,
   type HostedLeague,
   type HostedMatchup,

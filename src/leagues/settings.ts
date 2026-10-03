@@ -102,6 +102,9 @@ export function settingsProblems(sport: HostedSport, s: LeagueSettings, maxTeams
   if (s.waivers.days < 0 || s.waivers.days > 7) out.push('Waiver period must be 0 to 7 days.');
   if (s.trades.reviewHours < 0 || s.trades.reviewHours > 72) out.push('Trade review must be 0 to 72 hours.');
   if (s.trades.review === 'vote' && s.trades.vetoVotes < 1) out.push('Vetoes need at least 1 vote.');
+  if (s.trades.deadline && (!/^\d{4}-\d{2}-\d{2}$/.test(s.trades.deadline) || Number.isNaN(Date.parse(s.trades.deadline)))) {
+    out.push('Trade deadline must be a date like 2027-02-15, or empty.');
+  }
   for (const [k, v] of Object.entries(s.scoring)) if (!Number.isFinite(v)) out.push(`Scoring for ${k} isn't a number.`);
   return out;
 }

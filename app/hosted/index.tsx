@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Linking, StyleSheet, Text } from 'react-native';
-import { Button, Card, CardHead, Chips, Field, Label, MenuRow, Note, Screen } from '@/components/ui';
+import { Button, Card, CardHead, Field, Label, MenuRow, Note, Screen } from '@/components/ui';
 import {
   hostedConn,
   saveHostedConn,
@@ -12,26 +12,15 @@ import {
   whoAmI,
   type HostedConn,
 } from '@/lib/leagues/client';
-import { createLeague, joinLeague, myHostedLeagues, type LeagueRow } from '@/lib/leagues/data';
+import { joinLeague, myHostedLeagues, type LeagueRow } from '@/lib/leagues/data';
 import { removeConnection } from '@/lib/storage/connections';
 import { colors, fonts, themedStyles } from '@/lib/theme';
-import { nhlSeasonFor } from '@/src/leagues/nhl';
-import type { HostedSport } from '@/src/leagues/scoring';
+import { FORMAT_LABELS } from '@/src/leagues/types';
 import { PROVIDER_INFO } from '@/src/providers/info';
 import { syncLeagues } from '@/src/sports/hub';
 
-const SPORTS: { id: HostedSport; label: string }[] = [
-  { id: 'nhl', label: 'HOCKEY' },
-  { id: 'nfl', label: 'FOOTBALL' },
-];
-
 const STATUS: Record<string, string> = { setup: 'Waiting for friends', drafting: 'Drafting now', season: 'In season', done: 'Season over' };
 
-/** The season a new league plays: NHL numbers it 20262027, the NFL by the year it kicks off. */
-function seasonFor(sport: HostedSport, now = new Date()): string {
-  if (sport === 'nhl') return nhlSeasonFor(now);
-  return String(now.getUTCMonth() < 2 ? now.getUTCFullYear() - 1 : now.getUTCFullYear());
-}
 
 export default function Hosted() {
   const router = useRouter();
@@ -46,9 +35,6 @@ export default function Hosted() {
     email: '',
     code: '',
     codeSent: false,
-    name: '',
-    sport: 'nhl' as HostedSport,
-    teams: '10',
     teamName: '',
     joinCode: '',
   });
@@ -188,7 +174,7 @@ export default function Hosted() {
             key={l.id}
             icon={l.sport === 'nhl' ? '◆' : '◈'}
             name={l.name}
-            sub={`${l.sport === 'nhl' ? 'Hockey' : 'Football'} · ${STATUS[l.status] ?? l.status} · code ${l.inviteCode}`}
+            sub={`${l.sport === 'nhl' ? 'Hockey' : 'Football'} · ${FORMAT_LABELS[l.settings.format]} · ${STATUS[l.status] ?? l.status} · code ${l.inviteCode}`}
             onPress={() => router.push({ pathname: '/hosted/[id]', params: { id: l.id } })}
           />
         ))
@@ -197,31 +183,12 @@ export default function Hosted() {
       )}
 
       <Label>START A LEAGUE</Label>
-      <Card>
-        <Chips items={SPORTS} value={f.sport} onChange={(v) => setF((x) => ({ ...x, sport: v }))} />
-        <Field label="LEAGUE NAME" value={f.name} onChangeText={set('name')} autoCapitalize="words" placeholder="Saturday Night Puck" />
-        <Field label="TEAMS (2–20)" value={f.teams} onChangeText={set('teams')} keyboardType="number-pad" />
-        <Field label="YOUR TEAM NAME" value={f.teamName} onChangeText={set('teamName')} autoCapitalize="words" />
-        <Text style={st.small}>
-          {f.sport === 'nhl'
-            ? 'Head-to-head points. 2 C · 2 LW · 2 RW · 4 D · 1 UTIL · 2 G · 4 bench. Goal 3, assist 2, PPG +1, shot 0.4, hit 0.2, block 0.4, +/- 0.5 · goalie win 4, save 0.2, GA −1, shutout 3.'
-            : 'Head-to-head points, full PPR (Sleeper\'s scoring). QB · 2 RB · 2 WR · TE · FLEX · K · DEF · 6 bench.'}
-        </Text>
-        <Button
-          label="CREATE LEAGUE"
-          busy={busy === 'create'}
-          onPress={() =>
-            run('create', async () => {
-              const n = Number(f.teams);
-              if (!f.name.trim() || !f.teamName.trim()) throw new Error('Name the league and your team.');
-              if (!Number.isInteger(n) || n < 2 || n > 20) throw new Error('Teams must be 2 to 20.');
-              const id = await createLeague({ name: f.name, sport: f.sport, season: seasonFor(f.sport), maxTeams: n, teamName: f.teamName });
-              await syncLeagues().catch(() => undefined);
-              router.push({ pathname: '/hosted/[id]', params: { id } });
-            })
-          }
-        />
-      </Card>
+      <MenuRow
+        icon="+"
+        name="NEW LEAGUE"
+        sub="Hockey or football · format, roster, scoring, draft, playoffs, waivers, trades"
+        onPress={() => router.push('/hosted/new')}
+      />
 
       <Label>JOIN A FRIEND&apos;S LEAGUE</Label>
       <Card>

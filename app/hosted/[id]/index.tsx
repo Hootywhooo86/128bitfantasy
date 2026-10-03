@@ -7,7 +7,12 @@ import { autoDraft, draftPlayer, leagueBundle, leaveLeague, startDraft, watchLea
 import { colors, fonts, themedStyles } from '@/lib/theme';
 import { draftState, openSlots, rankPool, rosterSize } from '@/src/leagues/draft';
 import type { PoolPlayer } from '@/src/leagues/types';
+import { settingsSummary } from '@/src/leagues/settings';
+import { champion } from '@/src/leagues/standings';
+import { FORMAT_LABELS } from '@/src/leagues/types';
 import { syncLeagues } from '@/src/sports/hub';
+
+const ACTIVITY: Record<string, string> = { add: 'ADD', drop: 'DROP', waiver: 'WAIVER CLAIM', 'trade-in': 'TRADED FOR', commish: 'COMMISSIONER' };
 
 /** How often the board re-reads during a draft, in case live updates are off in Supabase. */
 const DRAFT_POLL_MS = 5_000;
@@ -95,12 +100,20 @@ export default function HostedLeague() {
   const { league, teams } = b;
   const teamName = (t: string | null) => teams.find((x) => x.id === t)?.name ?? '—';
   const isCommish = b.me === league.commissioner;
+  const myTeam = teams.find((t) => t.id === b.myTeamId);
+  const myClaims = b.myClaims.filter((c) => c.status === 'pending').length;
+  const openTrades = b.trades.filter((t) => t.status === 'proposed' || t.status === 'accepted').length;
+  const offersToMe = b.trades.filter((t) => t.status === 'proposed' && t.toTeam === b.myTeamId).length;
+  const champ =
+    league.status === 'season' || league.status === 'done'
+      ? champion(league.sport, league.settings, teams.map((t) => t.id), b.matchups, b.weekScores)
+      : null;
   const sportName = league.sport === 'nhl' ? 'Hockey' : 'Football';
 
   return (
     <Screen section={`${sportName} · 128bit Leagues`} back onRefresh={() => reload()} refreshing={false}>
       <Text style={st.title}>{league.name}</Text>
-      <Text style={st.meta}>{`${sportName} · ${teams.length}/${league.maxTeams} teams · ${b.myTeamId ? `You: ${teamName(b.myTeamId)}` : 'not in it'}`}</Text>
+      <Text style={st.meta}>{`${sportName} · ${FORMAT_LABELS[league.settings.format]} · ${teams.length}/${league.maxTeams} teams · ${b.myTeamId ? `You: ${teamName(b.myTeamId)}` : 'not in it'}`}</Text>
       {error ? <Note tone="error">{error}</Note> : null}
 
       {league.status === 'setup' ? (
@@ -119,6 +132,12 @@ export default function HostedLeague() {
             />
             <Text style={st.small}>They also need the same Supabase Project URL and key — send those the first time.</Text>
           </Card>
+          <MenuRow
+            icon="⚙"
+            name={isCommish ? 'LEAGUE SETTINGS · EDIT' : 'LEAGUE SETTINGS'}
+            sub={`${FORMAT_LABELS[league.settings.format]} · ${settingsSummary(league.sport, league.settings)}`}
+            onPress={() => router.push({ pathname: '/hosted/[id]/settings', params: { id: league.id } })}
+          />
           <Label>{`TEAMS · ${teams.length}`}</Label>
           <Card>
             {teams.map((t) => (
@@ -169,7 +188,47 @@ export default function HostedLeague() {
             onPress={() => router.push({ pathname: '/league/[provider]/[id]', params: { provider: 'bit128', id: league.id } })}
           />
           <MenuRow icon="☰" name="SET LINEUP" sub="Starters count from puck drop / kickoff" onPress={() => router.push({ pathname: '/hosted/[id]/lineup', params: { id: league.id } })} />
-          <MenuRow icon="+" name="FREE AGENTS" sub="Add and drop, first come first served" onPress={() => router.push({ pathname: '/hosted/[id]/players', params: { id: league.id } })} />
+          <MenuRow
+            icon="+"
+            name="FREE AGENTS & WAIVERS"
+            sub={
+              league.settings.waivers.type === 'faab'
+                ? `FAAB bids · $${myTeam?.faab ?? 0} left`
+                : league.settings.waivers.type === 'rolling'
+                  ? `Waiver priority #${myTeam?.waiverRank ?? '—'}`
+                  : 'Add and drop, first come first served'
+            }
+            value={myClaims ? `${myClaims} claim${myClaims === 1 ? '' : 's'}` : undefined}
+            onPress={() => router.push({ pathname: '/hosted/[id]/players', params: { id: league.id } })}
+          />
+          <MenuRow
+            icon="⇄"
+            name="TRADES"
+            sub={offersToMe ? `${offersToMe} offer${offersToMe === 1 ? '' : 's'} waiting for you` : 'Propose, accept, review'}
+            value={openTrades ? `${openTrades} open` : undefined}
+            onPress={() => router.push({ pathname: '/hosted/[id]/trades', params: { id: league.id } })}
+          />
+          <MenuRow
+            icon="⚙"
+            name="LEAGUE SETTINGS"
+            sub={`${FORMAT_LABELS[league.settings.format]} · ${settingsSummary(league.sport, league.settings)}`}
+            onPress={() => router.push({ pathname: '/hosted/[id]/settings', params: { id: league.id } })}
+          />
+          {champ ? (
+            <Card style={{ borderColor: colors.accent }}>
+              <CardHead title="CHAMPION" note={league.season} />
+              <Text style={st.clock}>{`🏆 ${teamName(champ)}`}</Text>
+            </Card>
+          ) : null}
+          <Label>LEAGUE ACTIVITY</Label>
+          <Card>
+            {b.activity.slice(0, 12).map((a) => (
+              <Text key={a.id} style={st.row}>
+                {`${ACTIVITY[a.kind] ?? a.kind.toUpperCase()} · ${a.teamId ? teamName(a.teamId) : 'League'}${a.playerId ? ` · ${pool?.get(a.playerId)?.name ?? a.playerId}` : ''}${a.detail ? ` · ${a.detail}` : ''}`}
+              </Text>
+            ))}
+            {b.activity.length === 0 ? <Text style={st.row}>Nothing yet.</Text> : null}
+          </Card>
           <Label>DRAFT RESULTS</Label>
           <Card>
             {b.picks.slice(0, teams.length * 3).map((p) => (
