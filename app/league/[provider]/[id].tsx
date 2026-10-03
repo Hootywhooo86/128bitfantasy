@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachesCornerButton } from '@/components/CoachesCornerButton';
 import { LineupCheck } from '@/components/LineupCheck';
 import { RosterList } from '@/components/RosterList';
@@ -170,12 +170,19 @@ export default function LeagueScreen() {
             </Pressable>
           ))}
       </Card>
+      {league.provider === 'yahoo' ? (
+        // Required by Yahoo's API terms wherever its data is shown.
+        <Text style={st.attrib} onPress={() => Linking.openURL('https://sports.yahoo.com/fantasy/').catch(() => undefined)}>
+          Fantasy data provided by Yahoo Fantasy
+        </Text>
+      ) : null}
     </Screen>
   );
 }
 
 const st = themedStyles(() =>
   StyleSheet.create({
+    attrib: { fontSize: 11.5, color: colors.textDim, fontFamily: fonts.body, textAlign: 'center', marginTop: 12, textDecorationLine: 'underline' },
     title: { fontSize: 22, fontFamily: fonts.bodyBold, color: colors.text, marginTop: 4 },
     meta: { fontSize: 12.5, color: colors.textMuted, marginTop: 6, fontFamily: fonts.body },
     age: { fontFamily: fonts.pixel, fontSize: 7, color: colors.textDim, letterSpacing: 0.8, marginTop: 8 },

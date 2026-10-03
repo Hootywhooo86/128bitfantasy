@@ -59,7 +59,7 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     ],
     help: [
       { label: 'Create a Yahoo app', url: 'https://developer.yahoo.com/apps/create/' },
-      { label: 'Yahoo Fantasy API guide', url: 'https://developer.yahoo.com/fantasysports/guide/' },
+      { label: 'Yahoo Fantasy API guide', url: 'https://sports.yahoo.com/developer/docs/' },
       { label: 'Yahoo Fantasy help', url: 'https://help.yahoo.com/kb/fantasy-sports' },
     ],
   },
