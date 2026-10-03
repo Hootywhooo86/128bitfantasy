@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildLeagueContext, cornerQuestion } from './coach-context';
+import { buildLeagueContext, cornerQuestion, tradeQuestion } from './coach-context';
 import { snapshotProblems, type LeagueSnapshot } from './models';
 
 const snap: LeagueSnapshot = {
@@ -47,6 +47,11 @@ describe('coaches corner context', () => {
     expect(ctx).toContain('Opponent roster: roster not available');
   });
 
+  it('passes the lineup check to the coach', () => {
+    expect(ctx).toContain('Lineup check');
+    expect(ctx).toContain('QB: Star QB is QUESTIONABLE');
+  });
+
   it('asks the user when it cannot tell which team is theirs', () => {
     const c = buildLeagueContext({ ...snap, league: { ...snap.league, myTeamId: null } });
     expect(c).toContain('ask them');
@@ -74,6 +79,23 @@ describe('coaches corner context', () => {
     expect(cornerQuestion('lineup', '', true)).toMatch(/exploit/);
     expect(cornerQuestion('ask', '')).toContain('one move');
     expect(cornerQuestion('ask', 'Trade Kelce?')).toBe('Trade Kelce?');
+  });
+});
+
+describe('trade check', () => {
+  it('names both sides and asks for a grade and a verdict', () => {
+    const q = tradeQuestion(['Star QB'], ['Their RB'], 'Third', 'I need RBs');
+    expect(q).toMatch(/A to F/);
+    expect(q).toContain('I give: Star QB');
+    expect(q).toContain('I get from Third: Their RB');
+    expect(q).toContain('Also: I need RBs');
+  });
+
+  it('adds the trade partner roster to the context once', () => {
+    const c = buildLeagueContext(snap, 'a', ['c', 'b']);
+    expect(c).toContain('Third roster:');
+    expect(c.match(/Opponent roster/g)).toHaveLength(1);
+    expect(c).not.toContain('Theirs roster:');
   });
 });
 

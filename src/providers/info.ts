@@ -101,6 +101,25 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
       { label: 'Fantrax help pages', url: 'https://www.fantrax.com/newui/fantasy/help.go' },
     ],
   },
+  mfl: {
+    id: 'mfl',
+    label: 'MyFantasyLeague',
+    apiAccess: 'read-write',
+    appAccess: 'read-only',
+    official: true,
+    connectWith: 'League ID (+ your franchise number)',
+    accessNote:
+      "MFL's official API can submit lineups and moves with a login. This app only uses its public read side — no password, never changes anything.",
+    steps: [
+      'Open your league on myfantasyleague.com. The League ID is the number after /home/ in the address.',
+      'Optional: your franchise number (0001, 0002…) is in the address of your team page as F=. Without it, pick your team in My Teams.',
+      'Private leagues (that hide from non-members) cannot be read.',
+    ],
+    help: [
+      { label: 'MFL API reference', url: 'https://api.myfantasyleague.com/2026/api_info' },
+      { label: 'MyFantasyLeague home', url: 'https://www.myfantasyleague.com/' },
+    ],
+  },
   fleaflicker: {
     id: 'fleaflicker',
     label: 'Fleaflicker',

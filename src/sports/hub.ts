@@ -68,6 +68,16 @@ export async function cachedSnapshot(l: Pick<League, 'provider' | 'id'>): Promis
  */
 const inFlight = new Map<string, Promise<LeagueSnapshot>>();
 
+/** Called with the previous and new snapshot whenever a league refreshes. */
+export type SnapshotListener = (prev: LeagueSnapshot | null, next: LeagueSnapshot) => void | Promise<void>;
+const listeners = new Set<SnapshotListener>();
+
+/** The alerts and the 128bit feed hang off this; the hub itself knows nothing about them. */
+export function onSnapshot(l: SnapshotListener): () => void {
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
+
 export function fetchSnapshot(league: League, signal?: AbortSignal): Promise<LeagueSnapshot> {
   const k = snapKey(league);
   const running = inFlight.get(k);
@@ -75,8 +85,13 @@ export function fetchSnapshot(league: League, signal?: AbortSignal): Promise<Lea
   const p = (async () => {
     const conn = (await getConnections()).find((c) => c.provider === league.provider);
     if (!conn) throw new Error(`Connect ${league.provider} again in Settings to refresh this league.`);
+    const prev = await getJsonItem<LeagueSnapshot>(k);
     const snap = await adapterFor(conn).snapshot(conn, league, signal);
     await setJsonItem(k, snap);
+    for (const l of [...listeners]) {
+      // A listener failing must never fail the refresh the screen asked for.
+      Promise.resolve(l(prev, snap)).catch(() => undefined);
+    }
     return snap;
   })().finally(() => inFlight.delete(k));
   inFlight.set(k, p);

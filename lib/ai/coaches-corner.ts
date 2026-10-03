@@ -11,7 +11,7 @@
  * looked up.
  */
 import { getJsonItem, setJsonItem } from '@/lib/storage/kv';
-import { buildLeagueContext, cornerQuestion, type CornerMode } from '@/src/sports/coach-context';
+import { buildLeagueContext, cornerQuestion, tradeQuestion, type CornerMode } from '@/src/sports/coach-context';
 import type { LeagueSnapshot } from '@/src/sports/models';
 import { leagueKey } from '@/src/sports/prefs';
 import {
@@ -54,9 +54,10 @@ export function buildMessages(
   teamId: string,
   history: ThreadMessage[],
   question: string,
-  canSearch: boolean
+  canSearch: boolean,
+  alsoTeamIds: string[] = []
 ): ChatMessage[] {
-  const system = `${buildSystemPrompt(canSearch)}\n\n--- League context (live from the provider) ---\n${buildLeagueContext(snapshot, teamId)}`;
+  const system = `${buildSystemPrompt(canSearch)}\n\n--- League context (live from the provider) ---\n${buildLeagueContext(snapshot, teamId, alsoTeamIds)}`;
   return [
     { role: 'system', content: system },
     ...history.slice(-SEND).map((m) => ({ role: m.role, content: m.content })),
@@ -64,12 +65,16 @@ export function buildMessages(
   ];
 }
 
+/** A deal for TRADE CHECK: player names on each side and who it's with. */
+export type TradeDeal = { partnerId: string; give: string[]; get: string[] };
+
 export async function askCoach(
   snapshot: LeagueSnapshot,
   teamId: string,
   mode: CornerMode,
   question: string | undefined,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  deal?: TradeDeal
 ): Promise<ThreadMessage[]> {
   const cfg = await getAiRuntime();
   if (!cfg.apiKey) {
@@ -77,7 +82,8 @@ export async function askCoach(
   }
   const history = await loadThread(snapshot, teamId);
   const scouting = teamId !== snapshot.league.myTeamId;
-  const text = cornerQuestion(mode, question, scouting);
+  const partner = deal ? snapshot.teams.find((t) => t.id === deal.partnerId)?.name ?? 'them' : '';
+  const text = mode === 'grade' && deal ? tradeQuestion(deal.give, deal.get, partner, question) : cornerQuestion(mode, question, scouting);
   const canSearch = providerCanSearchWeb(cfg.provider, cfg.model);
 
   const res = await coachChat({
@@ -88,7 +94,7 @@ export async function askCoach(
     signal,
     webSearch: true,
     forceSearch: true,
-    messages: buildMessages(snapshot, teamId, history, text, canSearch),
+    messages: buildMessages(snapshot, teamId, history, text, canSearch, deal ? [deal.partnerId] : []),
   });
 
   const now = Date.now();

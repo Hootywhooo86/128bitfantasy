@@ -31,7 +31,12 @@ export type Connection =
       espnS2: string | null;
       swid: string | null;
     }
-  | { provider: 'fleaflicker'; email: string; sport: Sport[] };
+  | { provider: 'fleaflicker'; email: string; sport: Sport[] }
+  | {
+      provider: 'mfl';
+      /** League id, plus your franchise id ("0004") if you know it. */
+      leagues: { id: string; franchiseId: string | null }[];
+    };
 
 /** Thrown with a sentence the user can act on. */
 export class ProviderError extends Error {

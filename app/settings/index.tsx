@@ -1,11 +1,15 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
+import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button, Card, CardHead, Field, Label, MenuRow, Note, Screen } from '@/components/ui';
 import { getProviderMeta } from '@/lib/ai/ai-coach';
 import { getAiSettings, type AiSettings } from '@/lib/ai/settings';
 import { ACCENTS, accentName, normalizeHex, tooDark, useAccent } from '@/lib/accent';
+import { alertsEnabled, alertsSupported, disableAlerts, enableAlerts } from '@/lib/alerts';
+import { setBackgroundRefresh } from '@/lib/background';
 import { describeNetworkFailure } from '@/lib/net-errors';
+import { useFeed } from '@/lib/storage/feed';
 import { getConnections } from '@/lib/storage/connections';
 import { canCheckApis, lastHealth, runHealthCheck } from '@/lib/storage/health';
 import { saveAccent, usePrefs } from '@/lib/storage/prefs';
@@ -32,6 +36,10 @@ export default function Settings() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateCheck | null>(null);
   const [hex, setHex] = useState('');
+  const [alertsOn, setAlertsOn] = useState(false);
+  const [alertMsg, setAlertMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const feed = useFeed();
 
   const load = useCallback(() => {
     getConnections().then(setConns);
@@ -39,6 +47,7 @@ export default function Settings() {
     getAiSettings().then(setAi);
     lastHealth().then(setHealth);
     lastSyncedAt().then(setSynced);
+    alertsEnabled().then(setAlertsOn);
   }, []);
   useFocusEffect(load);
 
@@ -60,6 +69,23 @@ export default function Settings() {
     } finally {
       setBusy(null);
     }
+  }
+
+  async function toggleAlerts(on: boolean) {
+    setAlertMsg(null);
+    if (on) {
+      const why = await enableAlerts();
+      if (why) return setAlertMsg(why);
+    } else {
+      await disableAlerts();
+    }
+    await setBackgroundRefresh(on).catch(() => undefined);
+    setAlertsOn(on);
+  }
+
+  async function copyFeed() {
+    await Clipboard.setStringAsync(JSON.stringify(feed, null, 2));
+    setCopied(true);
   }
 
   async function checkApis() {
@@ -140,6 +166,46 @@ export default function Settings() {
         {normalizeHex(hex) && !tooDark(normalizeHex(hex)!) ? (
           <Button label="USE THIS COLOR" kind="ghost" onPress={() => saveAccent(normalizeHex(hex)!)} />
         ) : null}
+      </Card>
+
+      <Label>GAME-DAY ALERTS</Label>
+      <Card>
+        <View style={st.switchRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={st.switchT}>Alerts</Text>
+            <Text style={st.body}>
+              A notification when a starter is ruled out, a slot is empty, or you win or lose. The phone checks your teams in the
+              background — usually every 30 minutes or more, whenever your phone allows.
+            </Text>
+          </View>
+          <Switch
+            value={alertsOn}
+            onValueChange={toggleAlerts}
+            disabled={!alertsSupported}
+            trackColor={{ true: colors.accent, false: colors.track }}
+            thumbColor={colors.text}
+          />
+        </View>
+        {alertMsg ? <Note tone="error">{alertMsg}</Note> : null}
+      </Card>
+
+      <Label>128BIT FEED</Label>
+      <Card>
+        <CardHead title="YOUR EVENTS" note={`${feed.length} saved`} />
+        <Text style={st.body}>
+          Wins, losses and lineup fixes go into the shared 128bit feed, ready for 128bitlife quests and XP.
+        </Text>
+        {feed.length === 0 ? (
+          <Text style={st.body}>Nothing yet — events appear as your leagues refresh.</Text>
+        ) : (
+          feed.slice(0, 5).map((e) => (
+            <View key={e.id} style={st.hrow}>
+              <Text style={[st.hdot, { color: e.type === 'matchup.won' || e.type === 'lineup.fixed' ? colors.win : e.type === 'lineup.problem' || e.type === 'matchup.lost' ? colors.loss : colors.warn }]}>●</Text>
+              <Text style={st.hdet} numberOfLines={2}>{`${e.title} · ${e.league.name}`}</Text>
+            </View>
+          ))
+        )}
+        {feed.length ? <Button label={copied ? 'COPIED' : 'COPY FEED (JSON)'} kind="ghost" onPress={copyFeed} /> : null}
       </Card>
 
       <Label>COACHES CORNER AI</Label>
@@ -231,6 +297,8 @@ const st = themedStyles(() =>
     swatchOn: { borderColor: colors.text, transform: [{ scale: 1.08 }] },
     body: { fontSize: 12.5, color: colors.textMuted, lineHeight: 19, fontFamily: fonts.body, marginBottom: 8 },
     hrow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 },
+    switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    switchT: { fontSize: 15, fontFamily: fonts.bodySemi, color: colors.text, marginBottom: 4 },
     hdot: { fontSize: 11 },
     hname: { width: 86, fontSize: 13.5, fontFamily: fonts.bodySemi, color: colors.text },
     hdet: { flex: 1, fontSize: 12, color: colors.textMuted, fontFamily: fonts.body },

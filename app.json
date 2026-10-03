@@ -8,7 +8,13 @@
     "scheme": "bitfantasy",
     "userInterfaceStyle": "dark",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch",
+          "processing"
+        ]
+      }
     },
     "android": {
       "package": "com.hootywhooo86.bit128fantasy",
@@ -36,7 +42,15 @@
       ],
       "expo-sqlite",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "color": "#c4cad3",
+          "defaultChannel": "gameday"
+        }
+      ],
+      "expo-background-task"
     ],
     "experiments": {
       "typedRoutes": true

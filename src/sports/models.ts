@@ -19,7 +19,7 @@ export const SPORTS: { id: Sport; label: string }[] = [
   { id: 'nhl', label: 'NHL' },
 ];
 
-export type ProviderId = 'sleeper' | 'yahoo' | 'fantrax' | 'espn' | 'fleaflicker';
+export type ProviderId = 'sleeper' | 'yahoo' | 'fantrax' | 'espn' | 'fleaflicker' | 'mfl';
 
 export type Record3 = { wins: number; losses: number; ties: number };
 
@@ -64,7 +64,12 @@ export type RosterPlayer = {
   injury: string | null;
 };
 
-export type Roster = { teamId: string; players: RosterPlayer[] };
+export type Roster = {
+  teamId: string;
+  players: RosterPlayer[];
+  /** Starting slots with nobody in them, e.g. ["FLEX"]. Only where the provider says. */
+  emptySlots?: string[];
+};
 
 export type MatchupSide = { teamId: string; points: number | null };
 

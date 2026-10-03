@@ -55,3 +55,22 @@ describe('fantrax player feed', () => {
     expect(sample.every((p) => typeof p.name === 'string' && typeof p.fantraxId === 'string')).toBe(true);
   }, 90_000);
 });
+
+describe('mfl end to end', () => {
+  it('parses a real public league', async () => {
+    const { exportUrl, toMflLeague, toMflTeams, toMflRosters, toMflPlayers, toMflMatchups, mflSeason } = await import('@/src/providers/mfl/adapter');
+    const season = mflSeason();
+    const L = { L: '23456' };
+    const [lg, rosters, standings, live, players] = await Promise.all(
+      ['league', 'rosters', 'leagueStandings', 'liveScoring', 'players'].map((t) =>
+        getJson('mfl', exportUrl(season, t, t === 'players' ? {} : L), { timeoutMs: 60_000 })
+      )
+    );
+    expect(toMflLeague(lg, String(season), null).name.length).toBeGreaterThan(0);
+    const teams = toMflTeams(lg, standings);
+    expect(teams.length).toBeGreaterThan(1);
+    const r = toMflRosters(rosters, live, toMflPlayers(players), {});
+    expect(r.some((x) => x.players.some((p) => p.name !== p.id))).toBe(true);
+    expect(toMflMatchups(live).period).not.toBeNull();
+  }, 120_000);
+});

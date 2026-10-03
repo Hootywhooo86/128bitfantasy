@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, Chips, Field, Note, Screen } from '@/components/ui';
 import { AiCoachError, getProviderMeta } from '@/lib/ai/ai-coach';
-import { askCoach, clearThread, loadThread, sourcesOf, webNote, type ThreadMessage } from '@/lib/ai/coaches-corner';
+import { askCoach, clearThread, loadThread, sourcesOf, webNote, type ThreadMessage, type TradeDeal } from '@/lib/ai/coaches-corner';
 import { getAiSettings, type AiSettings } from '@/lib/ai/settings';
 import { describeNetworkFailure } from '@/lib/net-errors';
 import { usePrefs } from '@/lib/storage/prefs';
@@ -12,7 +12,7 @@ import { colors, fonts, themedStyles } from '@/lib/theme';
 import { providerLabel } from '@/src/providers/http';
 import { CORNER_MODES, type CornerMode } from '@/src/sports/coach-context';
 import { cachedLeagues, cachedSnapshot, fetchSnapshot } from '@/src/sports/hub';
-import type { LeagueSnapshot, ProviderId } from '@/src/sports/models';
+import type { LeagueSnapshot, ProviderId, Roster } from '@/src/sports/models';
 import { snapshotWithPrefs } from '@/src/sports/prefs';
 
 /**
@@ -31,6 +31,9 @@ export default function TeamCoach() {
   const [error, setError] = useState<string | null>(null);
   const [ai, setAi] = useState<AiSettings | null>(null);
   const abort = useRef<AbortController | null>(null);
+  const [partnerPick, setPartnerPick] = useState<string | null>(null);
+  const [give, setGive] = useState<string[]>([]);
+  const [get, setGet] = useState<string[]>([]);
 
   useEffect(() => {
     getAiSettings().then(setAi);
@@ -45,6 +48,18 @@ export default function TeamCoach() {
   const view = snap ? snapshotWithPrefs(snap, prefs) : null;
   const teamName = view?.teams.find((t) => t.id === team)?.name ?? 'this team';
   const scouting = !!view && view.league.myTeamId !== team;
+  // TRADE CHECK: from my team the partner is picked; scouting, it's the team on screen.
+  const mine = view?.league.myTeamId ?? null;
+  const partnerId = scouting ? team : partnerPick;
+  const myRoster = view?.rosters.find((r) => r.teamId === (scouting ? mine : team));
+  const partnerRoster = partnerId ? view?.rosters.find((r) => r.teamId === partnerId) : undefined;
+  const nameOf = (r: Roster | undefined, ids: string[]) => ids.map((i) => r?.players.find((p) => p.id === i)?.name ?? i);
+  const deal: TradeDeal | undefined =
+    mode === 'grade' && partnerId && (give.length || get.length)
+      ? { partnerId, give: nameOf(myRoster, give), get: nameOf(partnerRoster, get) }
+      : undefined;
+  const toggle = (set: React.Dispatch<React.SetStateAction<string[]>>, id: string) =>
+    set((x) => (x.includes(id) ? x.filter((y) => y !== id) : [...x, id]));
 
   async function ask() {
     abort.current?.abort();
@@ -59,7 +74,7 @@ export default function TeamCoach() {
       if (league) s = await fetchSnapshot(league, ctl.signal).catch(() => snap);
       if (!s) throw new Error('No data for this league yet. Pull to refresh it first.');
       setSnap(s);
-      setThread(await askCoach(snapshotWithPrefs(s, prefs), team, mode, question, ctl.signal));
+      setThread(await askCoach(snapshotWithPrefs(s, prefs), team, mode, question, ctl.signal, deal));
       setQuestion('');
     } catch (e) {
       if (ctl.signal.aborted) return;
@@ -101,6 +116,39 @@ export default function TeamCoach() {
 
       <Chips items={CORNER_MODES.map((m) => ({ id: m.id, label: m.label }))} value={mode} onChange={setMode} />
       <Text style={st.blurb}>{CORNER_MODES.find((m) => m.id === mode)?.blurb}</Text>
+      {mode === 'grade' && view ? (
+        <Card>
+          {!scouting ? (
+            <>
+              <Text style={st.pickT}>TRADE WITH</Text>
+              <View style={st.pills}>
+                {view.teams
+                  .filter((t) => t.id !== team)
+                  .map((t) => (
+                    <Pill key={t.id} label={t.name} on={partnerPick === t.id} onPress={() => { setPartnerPick(t.id); setGet([]); }} />
+                  ))}
+              </View>
+            </>
+          ) : null}
+          <Text style={st.pickT}>YOU GIVE</Text>
+          <View style={st.pills}>
+            {(myRoster?.players ?? []).map((p) => (
+              <Pill key={p.id} label={`${p.name}${p.position ? ` ${p.position}` : ''}`} on={give.includes(p.id)} onPress={() => toggle(setGive, p.id)} />
+            ))}
+          </View>
+          {partnerRoster ? (
+            <>
+              <Text style={st.pickT}>{`YOU GET FROM ${(view.teams.find((t) => t.id === partnerId)?.name ?? '').toUpperCase()}`}</Text>
+              <View style={st.pills}>
+                {partnerRoster.players.map((p) => (
+                  <Pill key={p.id} label={`${p.name}${p.position ? ` ${p.position}` : ''}`} on={get.includes(p.id)} onPress={() => toggle(setGet, p.id)} />
+                ))}
+              </View>
+            </>
+          ) : null}
+        </Card>
+      ) : null}
+
       <Field
         label={mode === 'ask' ? 'YOUR QUESTION' : thread.length ? 'FOLLOW-UP (OPTIONAL)' : 'ANYTHING ELSE? (OPTIONAL)'}
         value={question}
@@ -110,7 +158,12 @@ export default function TeamCoach() {
         autoCorrect
         placeholder={mode === 'ask' ? 'Should I trade my RB2 for their WR1?' : 'e.g. I can only start one of my two TEs'}
       />
-      <Button label="BLOW THE WHISTLE" onPress={ask} busy={busy} disabled={!snap || !ai?.hasKey} />
+      <Button
+        label={mode === 'grade' ? 'GRADE THIS TRADE' : 'BLOW THE WHISTLE'}
+        onPress={ask}
+        busy={busy}
+        disabled={!snap || !ai?.hasKey || (mode === 'grade' && !deal)}
+      />
       {busy ? <Note>Checking injury reports, news and matchups online… this can take a minute.</Note> : null}
       {error ? <Note tone="error">{error}</Note> : null}
       {thread.length ? <Button label="NEW CONVERSATION" kind="ghost" onPress={reset} /> : null}
@@ -119,6 +172,14 @@ export default function TeamCoach() {
         <Note>{`Using ${getProviderMeta(ai.provider).label} · ${ai.model}. The coach sees ${scouting ? 'this team and yours' : 'your team'}, its matchup and the standings — fresh each question. Advice only: you make the moves.`}</Note>
       ) : null}
     </Screen>
+  );
+}
+
+function Pill({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} style={[st.pill, on && st.pillOn]}>
+      <Text style={[st.pillT, on && st.pillTOn]} numberOfLines={1}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -160,5 +221,11 @@ const st = themedStyles(() =>
     reply: { fontSize: 14.5, color: colors.text, lineHeight: 22, fontFamily: fonts.body },
     web: { fontFamily: fonts.pixel, fontSize: 7.5, color: colors.textDim, letterSpacing: 0.8, marginTop: 14 },
     src: { fontSize: 12.5, color: colors.accent, marginTop: 6, fontFamily: fonts.body },
+    pickT: { fontFamily: fonts.pixel, fontSize: 8, color: colors.textDim, letterSpacing: 1.2, marginTop: 6, marginBottom: 8 },
+    pills: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 },
+    pill: { borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceAlt, borderRadius: 14, paddingVertical: 6, paddingHorizontal: 10, maxWidth: '100%' },
+    pillOn: { borderColor: colors.accent, backgroundColor: colors.accent },
+    pillT: { fontSize: 12.5, color: colors.textMuted, fontFamily: fonts.body },
+    pillTOn: { color: colors.onAccent, fontFamily: fonts.bodySemi },
   })
 );

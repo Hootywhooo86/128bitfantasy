@@ -88,6 +88,12 @@ export function probes(season = new Date().getFullYear()): Probe[] {
           : { status: 'changed', detail: 'Feed answered in an unknown shape' },
     },
     {
+      provider: 'mfl',
+      // MFL's own schedule export: public, small, and the shape our live scoring parse shares.
+      url: `https://api.myfantasyleague.com/${season}/export?TYPE=nflSchedule&JSON=1`,
+      check: shape(['nflSchedule.matchup'], 'Export API answering'),
+    },
+    {
       provider: 'fleaflicker',
       url: 'https://www.fleaflicker.com/api/FetchUserLeagues?sport=NFL&email=probe%40example.com',
       check: (data) =>

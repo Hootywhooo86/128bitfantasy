@@ -7,6 +7,7 @@
  */
 import { getJson } from '@/src/providers/http';
 import { fantraxPlayersUrl, type FantraxPlayers } from '@/src/providers/fantrax/adapter';
+import { exportUrl, toMflPlayers, type MflPlayers } from '@/src/providers/mfl/adapter';
 import { sleeper, type SleeperPlayers, type SleeperSport } from '@/src/providers/sleeper/client';
 import type { Sport } from '@/src/sports/models';
 import { getJsonItem, setJsonItem } from './kv';
@@ -57,4 +58,10 @@ export function fantraxPlayers(sport: Sport, signal?: AbortSignal): Promise<Fant
     for (const [id, p] of Object.entries(raw ?? {})) out[id] = { name: p.name, team: p.team, position: p.position };
     return out;
   });
+}
+
+export function mflPlayers(season: number, signal?: AbortSignal): Promise<MflPlayers> {
+  return cached(`players_mfl_${season}`, async () =>
+    toMflPlayers(await getJson('mfl', exportUrl(season, 'players'), { signal, timeoutMs: 60_000, label: 'MFL player list' }))
+  );
 }

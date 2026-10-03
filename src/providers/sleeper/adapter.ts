@@ -105,9 +105,13 @@ export function toRoster(r: SleeperRoster, positions: string[], catalog: Sleeper
   };
 
   const players: RosterPlayer[] = [];
+  const emptySlots: string[] = [];
   starters.forEach((id, i) => {
     // "0" marks an empty starting slot.
-    if (!id || id === '0') return;
+    if (!id || id === '0') {
+      emptySlots.push(startSlots[i] ?? 'slot');
+      return;
+    }
     seen.add(id);
     players.push(make(id, 'starter', startSlots[i] ?? null));
   });
@@ -118,7 +122,7 @@ export function toRoster(r: SleeperRoster, positions: string[], catalog: Sleeper
     else if (taxi.has(id)) players.push(make(id, 'taxi', 'TAXI'));
     else players.push(make(id, 'bench', 'BN'));
   }
-  return { teamId: String(r.roster_id), players };
+  return { teamId: String(r.roster_id), players, emptySlots };
 }
 
 export function toMatchups(rows: SleeperMatchup[], week: number): Matchup[] {

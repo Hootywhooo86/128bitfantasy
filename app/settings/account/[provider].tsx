@@ -37,6 +37,7 @@ export default function Account() {
     espnS2: '',
     swid: '',
     userSecretId: '',
+    franchiseId: '',
     sport: 'nfl' as Sport,
   });
   const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
@@ -49,6 +50,8 @@ export default function Account() {
       if (c.provider === 'sleeper') setF((x) => ({ ...x, username: c.username }));
       if (c.provider === 'fleaflicker') setF((x) => ({ ...x, email: c.email }));
       if (c.provider === 'yahoo') setF((x) => ({ ...x, clientId: c.clientId, clientSecret: c.clientSecret }));
+      if (c.provider === 'mfl')
+        setF((x) => ({ ...x, leagueIds: c.leagues.map((l) => l.id).join(', '), franchiseId: c.leagues[0]?.franchiseId ?? '' }));
       if (c.provider === 'fantrax') setF((x) => ({ ...x, userSecretId: c.userSecretId ?? '', leagueIds: c.leagueIds.join(', ') }));
       if (c.provider === 'espn')
         setF((x) => ({ ...x, leagueIds: c.leagues.map((l) => l.id).join(', '), sport: c.leagues[0]?.sport ?? 'nfl', espnS2: c.espnS2 ?? '', swid: c.swid ?? '' }));
@@ -74,6 +77,14 @@ export default function Account() {
           espnS2: f.espnS2.trim() || null,
           swid: f.swid.trim() || null,
         };
+      }
+      case 'mfl': {
+        const ids = splitIds(f.leagueIds);
+        if (!ids.length) throw new Error('Enter at least one MFL league ID — the number after /home/ in the league address.');
+        const fr = f.franchiseId.trim();
+        if (fr && !/^\d{1,4}$/.test(fr)) throw new Error('Franchise number is up to 4 digits, like 0004.');
+        // One franchise number applies to the first league; pick the rest in My Teams.
+        return { provider, leagues: ids.map((id, i) => ({ id, franchiseId: i === 0 && fr ? fr : null })) };
       }
       case 'fantrax': {
         const ids = splitIds(f.leagueIds);
@@ -154,6 +165,28 @@ export default function Account() {
             onChangeText={set('swid')}
             placeholder="{XXXXXXXX-XXXX-…}"
             hint="Sign in at espn.com on a computer → DevTools → Application → Cookies → espn.com. Copy espn_s2 and SWID. SWID also tells us which team is yours."
+          />
+        </Card>
+      )}
+
+      {provider === 'mfl' && (
+        <Card>
+          <CardHead title="MYFANTASYLEAGUE" note="Official API" />
+          <Field
+            label="LEAGUE IDS"
+            value={f.leagueIds}
+            onChangeText={set('leagueIds')}
+            keyboardType="numbers-and-punctuation"
+            placeholder="23456"
+            hint="myfantasyleague.com/2026/home/<THIS NUMBER>. Separate several with commas."
+          />
+          <Field
+            label="YOUR FRANCHISE NUMBER (OPTIONAL)"
+            value={f.franchiseId}
+            onChangeText={set('franchiseId')}
+            keyboardType="number-pad"
+            placeholder="0004"
+            hint="For the first league. Skip it and pick your team in My Teams instead."
           />
         </Card>
       )}

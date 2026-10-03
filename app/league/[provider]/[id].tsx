@@ -2,6 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachesCornerButton } from '@/components/CoachesCornerButton';
+import { LineupCheck } from '@/components/LineupCheck';
 import { Card, CardHead, Empty, Label, Note, Screen } from '@/components/ui';
 import { describeNetworkFailure } from '@/lib/net-errors';
 import { usePrefs } from '@/lib/storage/prefs';
@@ -17,6 +18,7 @@ import {
   type ProviderId,
   type RosterPlayer,
 } from '@/src/sports/models';
+import { lineupIssues } from '@/src/sports/lineup-check';
 import { snapshotWithPrefs } from '@/src/sports/prefs';
 
 /**
@@ -77,6 +79,7 @@ export default function LeagueScreen() {
   const [mine, opp] = m ? sides(m, focusId) : [null, null];
   const pts = (p: number | null | undefined) => (p == null ? '—' : p.toFixed(1));
   const problems = snapshotProblems(snap);
+  const issues = lineupIssues(roster, league.sport);
 
   return (
     <Screen section={`${league.sport.toUpperCase()} · ${providerLabel(league.provider)}`} back onRefresh={refresh} refreshing={loading}>
@@ -110,6 +113,8 @@ export default function LeagueScreen() {
       ) : (
         <Note>We couldn&apos;t tell which team is yours here. Tap your team in the standings, or pick it in Settings → My Teams.</Note>
       )}
+
+      {focusId ? <LineupCheck league={league} teamId={focusId} issues={issues} mine={isMine} /> : null}
 
       {m && mine ? (
         <Card>

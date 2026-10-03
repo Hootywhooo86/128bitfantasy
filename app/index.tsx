@@ -10,6 +10,7 @@ import { providerLabel } from '@/src/providers/http';
 import type { HealthReport } from '@/src/providers/health';
 import { ageLabel, cachedLeagues, cachedSnapshot, groupBySport, lastSyncedAt, refreshStale, syncLeagues } from '@/src/sports/hub';
 import { SPORTS, formatRecord, myMatchup, sides, type League, type LeagueSnapshot, type Sport } from '@/src/sports/models';
+import { issueSummary, lineupIssues } from '@/src/sports/lineup-check';
 import { leagueKey, needsTeamPick, snapshotWithPrefs, visibleOnHome } from '@/src/sports/prefs';
 
 type Filter = Sport | 'all';
@@ -151,6 +152,7 @@ const TeamCard = memo(function TeamCard({ league, snap }: { league: League; snap
   const oppName = opp ? snap?.teams.find((t) => t.id === opp.teamId)?.name : null;
   const pts = (p: number | null | undefined) => (p == null ? '—' : p.toFixed(1));
   const diff = mine?.points != null && opp?.points != null ? mine.points - opp.points : null;
+  const flag = snap ? issueSummary(lineupIssues(snap.rosters.find((r) => r.teamId === league.myTeamId), league.sport)) : null;
 
   return (
     <Card onPress={onPress}>
@@ -168,6 +170,7 @@ const TeamCard = memo(function TeamCard({ league, snap }: { league: League; snap
           <Text style={[st.pts, { textAlign: 'right' }]}>{pts(opp.points)}</Text>
         </View>
       ) : null}
+      {flag ? <Text style={[st.flag, { color: flag.severity === 'bad' ? colors.loss : colors.warn }]}>{`● ${flag.text}`}</Text> : null}
       {snap ? <Text style={st.age}>{`updated ${ageLabel(snap.fetchedAt)}`}</Text> : <Text style={st.age}>loading…</Text>}
     </Card>
   );
@@ -183,6 +186,7 @@ const st = themedStyles(() =>
     pts: { fontSize: 20, fontFamily: fonts.bodyBold, color: colors.text, minWidth: 64 },
     vs: { flex: 1, textAlign: 'center', fontSize: 12, color: colors.textDim, fontFamily: fonts.body },
     age: { fontFamily: fonts.pixel, fontSize: 7, color: colors.textDim, letterSpacing: 0.8, marginTop: 10 },
+    flag: { fontFamily: fonts.pixel, fontSize: 8, letterSpacing: 0.8, marginTop: 10 },
     warnT: { fontFamily: fonts.pixel, fontSize: 9.5, color: colors.warn, letterSpacing: 1 },
     warnB: { fontSize: 12.5, color: colors.textMuted, marginTop: 7, lineHeight: 19, fontFamily: fonts.body },
   })

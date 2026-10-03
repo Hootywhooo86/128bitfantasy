@@ -24,18 +24,37 @@ npm run test:live        # hits the real APIs
 | Screen | What it does |
 |---|---|
 | **Home · My Teams** | Only teams you're in and chose to show, filtered by sport (ALL / NFL / NBA / MLB / NHL). Record, rank, live score, how fresh it is. Opens instantly from cache, then catches up. |
-| **Team** | Your matchup, roster by slot with injury tags, standings. Tap any team in the standings (or your opponent) to scout it. |
-| **Coaches Corner** | Per team. Opened from a team, the coach gets that team's roster, matchup and league — refreshed every question — and remembers the conversation. Scouting another team? It sees theirs and yours, for trade ideas. |
+| **Team** | Lineup check, your matchup, roster by slot with injury tags, standings. Tap any team in the standings (or your opponent) to scout it. |
+| **Lineup check** | Flags starters who are OUT / IR / doubtful / questionable and empty slots, lists healthy bench players allowed in that slot, and has one button to **fix it in the provider's own app** (the app stays read-only). Home cards show a red/yellow flag. Works without AI. |
+| **Coaches Corner** | Per team. Plays: START/SIT, WAIVER WIRE, TRADE TALK, **TRADE CHECK** (tap the players on each side; the coach grades it A–F and says accept / decline / counter), ASK COACH. Opened from a team, the coach gets that team's roster, matchup and league — refreshed every question — and remembers the conversation. Scouting another team? It sees theirs and yours, for trade ideas. |
 | **Settings** | Everything else, see below. |
 
 Settings holds:
 - **Sign in** — every provider, with a card saying how to sign in, **what its API can do (read & write / read only)**, that **this app is read only** everywhere, help links for when it goes wrong, and that provider's live API status.
 - **My Teams** — show/hide each league; pick your team where the provider couldn't say (e.g. ESPN without SWID).
 - **Colors** — 11 presets (silver default) or any hex. Win/loss/injury colours stay fixed.
+- **Game-day alerts** — a notification when a starter is ruled out, a slot is empty, or you win or lose. Background refresh (the OS decides; at best every 30 min). Tap an alert to open that team.
+- **128bit feed** — wins, losses and lineup problems/fixes as events for 128bitlife (see below). Copy as JSON.
 - **Coaches Corner AI** — provider, model, key.
 - **Updates** — SYNC ALL NOW, CHECK FANTASY APIS, CHECK FOR APP UPDATE (GitHub Releases, built by the `APK` workflow).
 
 Read-only everywhere. The app never changes a lineup or makes a move, even where a provider's API could.
+
+## 128bit feed events
+
+`src/sports/events.ts` compares each refresh of a league with the last one and
+emits facts, never guesses:
+
+| Event | When |
+|---|---|
+| `matchup.won` / `matchup.lost` / `matchup.tied` | Your record changed (not a mid-game score) |
+| `lineup.problem` | A starter newly OUT/IR/doubtful, or a slot newly empty |
+| `lineup.fixed` | Every starter healthy again (feed only, no buzz) |
+
+Each event: `{ id, type, at, app: '128bitfantasy', league: { provider, id, name, sport, season }, teamId, period, title, body }`.
+`id` is stable, so seeing the same change twice stores it once. 128bitlife can
+read them from Settings → 128BIT FEED → COPY FEED until the shared feed has a
+transport.
 
 ## Watching for API changes
 
@@ -64,9 +83,10 @@ On the web build, browsers block cross-site reads from Yahoo, Fantrax and Fleafl
 | **ESPN** | Unofficial v3 JSON (`lm-api-reads.fantasy.espn.com`) | League ID (+ `espn_s2` / `SWID` cookies for private leagues) | All four sports. No "my leagues" list without ESPN's fan API, so leagues are added by ID. SWID identifies your team. |
 | **Fantrax** | Unofficial read-only `fxea/general` feed | League ID and/or User Secret ID | **Experimental.** Publicly viewable leagues only, no live scores. Shapes taken from the go-fantrax client; parsed defensively. |
 | **Fleaflicker** | Official public API | Email | All four sports. No auth. |
+| **MyFantasyLeague** | Official export API | League ID (+ franchise number) | NFL. Public leagues need no login. Shapes taken from a live 2026 league. |
 
-Looked at and skipped for now: **CBS** (partner-only API), **NFL Fantasy**
-(no public API), **MyFantasyLeague** (official API, easy add-on next).
+Looked at and skipped: **CBS** (partner-only API), **NFL Fantasy**
+(no public API).
 
 ## Coaches Corner (AI)
 
@@ -126,6 +146,7 @@ regenerates `assets/brand/*` and `assets/images/*`.
 
 ## Next
 
-- `src/events.ts`: emit 128bit feed events (`matchup.won`, `waiver.claimed`, lineup-set streaks) so 128bitlife can turn them into quests + XP.
-- MyFantasyLeague provider.
+- A shared transport for the 128bit feed so 128bitlife picks events up automatically (today: copy JSON).
+- Weekly recap card: best/worst start, shareable, pixel style.
+- Waiver claims and trades as feed events (needs each provider's transactions endpoint).
 - Share the AI client with 128BIT FIT as a package instead of a copy.
