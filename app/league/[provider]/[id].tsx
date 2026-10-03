@@ -3,10 +3,11 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { CoachesCornerButton } from '@/components/CoachesCornerButton';
 import { LineupCheck } from '@/components/LineupCheck';
+import { RosterList } from '@/components/RosterList';
 import { Card, CardHead, Empty, Label, Note, Screen } from '@/components/ui';
 import { describeNetworkFailure } from '@/lib/net-errors';
 import { usePrefs } from '@/lib/storage/prefs';
-import { colors, fonts, injuryColor, themedStyles } from '@/lib/theme';
+import { colors, fonts, themedStyles } from '@/lib/theme';
 import { providerLabel } from '@/src/providers/http';
 import { ageLabel, cachedLeagues, cachedSnapshot, fetchSnapshot } from '@/src/sports/hub';
 import {
@@ -16,7 +17,6 @@ import {
   snapshotProblems,
   type LeagueSnapshot,
   type ProviderId,
-  type RosterPlayer,
 } from '@/src/sports/models';
 import { lineupIssues } from '@/src/sports/lineup-check';
 import { snapshotWithPrefs } from '@/src/sports/prefs';
@@ -135,21 +135,8 @@ export default function LeagueScreen() {
 
       {roster ? (
         <>
-          <Label>ROSTER</Label>
-          <Card>
-            {(['starter', 'bench', 'ir', 'taxi'] as const).map((slot) => {
-              const ps = roster.players.filter((p) => p.slot === slot);
-              if (!ps.length) return null;
-              return (
-                <View key={slot} style={{ marginBottom: 8 }}>
-                  <Text style={st.grp}>{{ starter: 'STARTERS', bench: 'BENCH', ir: 'IR', taxi: 'TAXI / MINORS' }[slot]}</Text>
-                  {ps.map((p) => (
-                    <PlayerRow key={`${slot}-${p.id}`} p={p} />
-                  ))}
-                </View>
-              );
-            })}
-          </Card>
+          <Label>ROSTER · TAP A PLAYER FOR NEWS</Label>
+          <RosterList snap={raw} roster={roster} />
         </>
       ) : null}
 
@@ -170,17 +157,6 @@ export default function LeagueScreen() {
           ))}
       </Card>
     </Screen>
-  );
-}
-
-function PlayerRow({ p }: { p: RosterPlayer }) {
-  return (
-    <View style={st.prow}>
-      <Text style={st.slot}>{p.lineupSlot ?? ''}</Text>
-      <Text style={st.pname} numberOfLines={1}>{p.name}</Text>
-      <Text style={st.pmeta}>{[p.position, p.proTeam].filter(Boolean).join(' · ')}</Text>
-      {p.injury ? <Text style={[st.inj, { color: injuryColor(p.injury) }]}>{p.injury.slice(0, 3).toUpperCase()}</Text> : null}
-    </View>
   );
 }
 

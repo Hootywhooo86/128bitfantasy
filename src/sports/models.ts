@@ -62,6 +62,8 @@ export type RosterPlayer = {
   proTeam: string | null;
   /** "Questionable", "Out", "IR"… or null when healthy / unknown. */
   injury: string | null;
+  /** This period's projected points, when the league provider sends one (ESPN does). */
+  projected?: number | null;
 };
 
 export type Roster = {

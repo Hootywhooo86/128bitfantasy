@@ -20,13 +20,14 @@ import { snapshotWithPrefs } from '@/src/sports/prefs';
  * refreshed on every question — and remembers the conversation per team.
  */
 export default function TeamCoach() {
-  const { provider, id, team } = useLocalSearchParams<{ provider: ProviderId; id: string; team: string }>();
+  const { provider, id, team, q } = useLocalSearchParams<{ provider: ProviderId; id: string; team: string; q?: string }>();
   const router = useRouter();
   const prefs = usePrefs();
   const [snap, setSnap] = useState<LeagueSnapshot | null>(null);
   const [thread, setThread] = useState<ThreadMessage[]>([]);
-  const [mode, setMode] = useState<CornerMode>('lineup');
-  const [question, setQuestion] = useState('');
+  // Opened from a player: start on ASK with the question already written.
+  const [mode, setMode] = useState<CornerMode>(q ? 'ask' : 'lineup');
+  const [question, setQuestion] = useState(q ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ai, setAi] = useState<AiSettings | null>(null);

@@ -73,13 +73,7 @@ async function tokenRequest(
   };
   if (!res.ok) {
     const why = json.error_description ?? json.error ?? `HTTP ${res.status}`;
-    throw new ProviderError(
-      'yahoo',
-      json.error === 'invalid_grant'
-        ? 'Yahoo rejected that code or it expired. Sign in again and paste the new code.'
-        : `Yahoo sign-in failed: ${why}`,
-      res.status
-    );
+    throw new ProviderError('yahoo', yahooAuthMessage(json.error, why), res.status);
   }
   return parseTokenResponse(json, Date.now(), previousRefresh);
 }
@@ -90,4 +84,22 @@ export function exchangeYahooCode(clientId: string, clientSecret: string, code: 
 
 export function refreshYahooToken(clientId: string, clientSecret: string, refreshToken: string): Promise<YahooTokens> {
   return tokenRequest(clientId, clientSecret, { grant_type: 'refresh_token', refresh_token: refreshToken }, refreshToken);
+}
+
+/** What went wrong at Yahoo's sign-in, in words, with Yahoo's own reason kept. */
+export function yahooAuthMessage(code: string | undefined, why: string): string {
+  const said = why ? ` (Yahoo said: ${why})` : '';
+  switch ((code ?? '').toLowerCase()) {
+    case 'invalid_grant':
+      return `Yahoo rejected that code${said}. Codes work once and expire after a few minutes — tap SIGN IN WITH YAHOO again and paste the new one.`;
+    case 'invalid_consumer_key':
+    case 'invalid_client':
+    case 'unauthorized_client':
+      return `Yahoo doesn't recognise that Client ID or Client Secret${said}. Copy both again from your app at developer.yahoo.com — the whole thing, no spaces.`;
+    case 'invalid_redirect_uri':
+    case 'redirect_uri_mismatch':
+      return `Your Yahoo app's Redirect URI must be exactly: oob${said}.`;
+    default:
+      return `Yahoo sign-in failed${said}.`;
+  }
 }

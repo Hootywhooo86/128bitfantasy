@@ -23,11 +23,12 @@ describe('api watch', () => {
     expect((await runProbe(espn)).status).toBe('ok');
   });
 
-  it('notices Yahoo moving its sign-in', async () => {
+  it('treats Yahoo asking for a login as alive, and a redirect page as a change', async () => {
     const yahoo = probes().find((p) => p.provider === 'yahoo')!;
-    vi.stubGlobal('fetch', async () =>
-      respond(200, { authorization_endpoint: 'https://api.login.yahoo.com/oauth3/auth', token_endpoint: 'x' })
-    );
+    expect(yahoo.url).toContain('fantasysports.yahooapis.com');
+    vi.stubGlobal('fetch', async () => respond(401, { error: { description: 'Please provide valid credentials.' } }));
+    expect((await runProbe(yahoo)).status).toBe('ok');
+    vi.stubGlobal('fetch', async () => respond(200, '<html>moved</html>'));
     expect((await runProbe(yahoo)).status).toBe('changed');
   });
 

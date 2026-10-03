@@ -12,7 +12,12 @@ import { refreshYahooToken } from './oauth';
 
 type YahooConn = Extract<Connection, { provider: 'yahoo' }>;
 
-export const YAHOO_API = 'https://fantasy.sports.yahoo.com/fantasy/v2';
+/**
+ * The API host. Not fantasy.sports.yahoo.com — that is the website, and its
+ * /fantasy/v2 path redirects to a 404 page. This bug kept Yahoo from ever
+ * loading leagues in the first build.
+ */
+export const YAHOO_API = 'https://fantasysports.yahooapis.com/fantasy/v2';
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v);

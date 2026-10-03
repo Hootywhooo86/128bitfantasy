@@ -27,19 +27,25 @@ export const CORNER_MODES: { id: CornerMode; label: string; blurb: string }[] = 
   { id: 'ask', label: 'ASK COACH', blurb: 'Anything else' },
 ];
 
-function playerLine(p: RosterPlayer): string {
+/** Per-player extras for the coach: projection and injury detail, by player id. */
+export type PlayerExtras = Record<string, { projection?: number | null; detail?: string | null; source?: string | null }>;
+
+function playerLine(p: RosterPlayer, x?: PlayerExtras[string]): string {
   const bits = [p.lineupSlot ?? p.slot.toUpperCase(), p.name];
   const meta = [p.position, p.proTeam].filter(Boolean).join(', ');
   if (meta) bits.push(`(${meta})`);
-  if (p.injury) bits.push(`[${p.injury}]`);
+  if (p.injury) bits.push(`[${p.injury}${x?.detail ? `: ${x.detail}` : ''}]`);
+  else if (x?.detail) bits.push(`[${x.detail}]`);
+  const proj = x?.projection ?? p.projected;
+  if (proj != null) bits.push(`proj ${proj.toFixed(1)}${x?.source ? ` (${x.source})` : ''}`);
   return `- ${bits.join(' ')}`;
 }
 
-function rosterBlock(title: string, r: Roster | undefined): string[] {
+function rosterBlock(title: string, r: Roster | undefined, extras: PlayerExtras = {}): string[] {
   if (!r || r.players.length === 0) return [`${title}: roster not available`];
   const order: RosterPlayer['slot'][] = ['starter', 'bench', 'ir', 'taxi'];
   const sorted = [...r.players].sort((a, b) => order.indexOf(a.slot) - order.indexOf(b.slot));
-  return [`${title}:`, ...sorted.map(playerLine)];
+  return [`${title}:`, ...sorted.map((p) => playerLine(p, extras[p.id]))];
 }
 
 function teamLine(t: Team | undefined): string {
@@ -55,7 +61,12 @@ function teamLine(t: Team | undefined): string {
  * `focusTeamId` is the team on screen — usually the user's, but scouting an
  * opponent works the same way, and the coach is told which it is.
  */
-export function buildLeagueContext(s: LeagueSnapshot, focusTeamId?: string | null, alsoTeamIds: string[] = []): string {
+export function buildLeagueContext(
+  s: LeagueSnapshot,
+  focusTeamId?: string | null,
+  alsoTeamIds: string[] = [],
+  extras: PlayerExtras = {}
+): string {
   const { league } = s;
   const teams = new Map(s.teams.map((t) => [t.id, t]));
   const rosters = new Map(s.rosters.map((r) => [r.teamId, r]));
@@ -92,10 +103,10 @@ export function buildLeagueContext(s: LeagueSnapshot, focusTeamId?: string | nul
     } else {
       lines.push('This week: bye');
     }
-    lines.push('', ...rosterBlock(title, rosters.get(focus)));
-    if (opp) lines.push('', ...rosterBlock('Opponent roster', rosters.get(opp.teamId)));
+    lines.push('', ...rosterBlock(title, rosters.get(focus), extras));
+    if (opp) lines.push('', ...rosterBlock('Opponent roster', rosters.get(opp.teamId), extras));
   } else {
-    lines.push('', ...rosterBlock(title, rosters.get(focus)));
+    lines.push('', ...rosterBlock(title, rosters.get(focus), extras));
   }
   const issues = lineupIssues(rosters.get(focus), league.sport);
   if (issues.length) {
@@ -110,7 +121,7 @@ export function buildLeagueContext(s: LeagueSnapshot, focusTeamId?: string | nul
   // (If I am their opponent, it is already listed above.)
   const facingMe = !!m && (m.home.teamId === me || m.away?.teamId === me);
   if (scouting && me && !facingMe) {
-    lines.push('', ...rosterBlock('My roster (for trade ideas)', rosters.get(me)));
+    lines.push('', ...rosterBlock('My roster (for trade ideas)', rosters.get(me), extras));
   }
 
   // Extra teams the question is about (a trade partner), unless already listed.
@@ -118,7 +129,7 @@ export function buildLeagueContext(s: LeagueSnapshot, focusTeamId?: string | nul
   for (const id of alsoTeamIds) {
     if (listed.has(id)) continue;
     listed.add(id);
-    lines.push('', ...rosterBlock(`${teams.get(id)?.name ?? 'Other team'} roster`, rosters.get(id)));
+    lines.push('', ...rosterBlock(`${teams.get(id)?.name ?? 'Other team'} roster`, rosters.get(id), extras));
   }
 
   const standings = [...s.teams].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));

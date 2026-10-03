@@ -14,11 +14,13 @@ import { getJsonItem, setJsonItem } from './kv';
 
 const DAY = 24 * 60 * 60 * 1000;
 
+export { cached };
+
 type Cached<T> = { at: number; data: T };
 
-async function cached<T>(key: string, load: () => Promise<T>): Promise<T> {
+async function cached<T>(key: string, load: () => Promise<T>, maxAge = DAY): Promise<T> {
   const hit = await getJsonItem<Cached<T>>(key);
-  if (hit && Date.now() - hit.at < DAY) return hit.data;
+  if (hit && Date.now() - hit.at < maxAge) return hit.data;
   try {
     const data = await load();
     await setJsonItem(key, { at: Date.now(), data });
@@ -38,13 +40,18 @@ export function trimSleeperPlayers(all: SleeperPlayers): SleeperPlayers {
       position: p.position ?? null,
       team: p.team ?? null,
       injury_status: p.injury_status ?? null,
+      // Kept only when set, so healthy players cost nothing.
+      ...(p.injury_body_part ? { injury_body_part: p.injury_body_part } : {}),
+      ...(p.injury_notes ? { injury_notes: p.injury_notes } : {}),
+      ...(p.practice_participation ? { practice_participation: p.practice_participation } : {}),
+      ...(p.espn_id ? { espn_id: p.espn_id } : {}),
     };
   }
   return out;
 }
 
 export function sleeperPlayers(sport: SleeperSport, signal?: AbortSignal): Promise<SleeperPlayers> {
-  return cached(`players_sleeper_${sport}`, async () => trimSleeperPlayers(await sleeper.players(sport, { signal })));
+  return cached(`players_sleeper_v2_${sport}`, async () => trimSleeperPlayers(await sleeper.players(sport, { signal })));
 }
 
 export function fantraxPlayers(sport: Sport, signal?: AbortSignal): Promise<FantraxPlayers> {

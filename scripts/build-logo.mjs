@@ -103,7 +103,8 @@ function chunk(type, data) {
 }
 
 /** size: output px. pad: fraction of size left empty on each side. bg: RGBA or null. */
-function png(grid, size, pad = 0, bg = null) {
+function png(grid, size, pad = 0, bg = null, palette = PALETTE) {
+  const N = grid.length;
   const inner = Math.floor(size * (1 - 2 * pad));
   const scale = Math.max(1, Math.floor(inner / N));
   const off = Math.floor((size - scale * N) / 2);
@@ -113,7 +114,7 @@ function png(grid, size, pad = 0, bg = null) {
     for (let x = 0; x < size; x++) {
       const gx = Math.floor((x - off) / scale), gy = Math.floor((y - off) / scale);
       const cell = gx >= 0 && gy >= 0 && gx < N && gy < N ? grid[gy][gx] : '.';
-      const px = cell === '.' ? bg ?? [0, 0, 0, 0] : PALETTE[cell];
+      const px = cell === '.' ? bg ?? [0, 0, 0, 0] : palette[cell];
       raw.set(px, y * (size * 4 + 1) + 1 + x * 4);
     }
   }
@@ -145,10 +146,41 @@ function out(rel, data) {
   console.log('wrote', rel);
 }
 
+/**
+ * The news scroll beside a player's name: a 16×16 parchment scroll, rolled at
+ * both ends, with ink lines. Drawn by hand — it is small enough that every
+ * pixel is a decision.
+ */
+const SCROLL_PALETTE = {
+  O: [90, 61, 31, 255], // outline
+  P: [240, 220, 168, 255], // parchment
+  S: [201, 168, 101, 255], // roll shadow
+  L: [138, 98, 52, 255], // ink
+};
+const SCROLL = [
+  '................',
+  '..OOOOOOOOOOOO..',
+  '.OPPPPPPPPPPPPO.',
+  '.OSSSSSSSSSSSSO.',
+  '..OOOOOOOOOOOO..',
+  '..OPPPPPPPPPPO..',
+  '..OPLLLLLLLLPO..',
+  '..OPPPPPPPPPPO..',
+  '..OPLLLLLLPPPO..',
+  '..OPPPPPPPPPPO..',
+  '..OPLLLLLLLLPO..',
+  '..OPPPPPPPPPPO..',
+  '..OOOOOOOOOOOO..',
+  '.OPPPPPPPPPPPPO.',
+  '.OSSSSSSSSSSSSO.',
+  '..OOOOOOOOOOOO..',
+].map((r) => r.split(''));
+
 const g = draw();
 // Grid cells stay whole pixels at every size, so the art never blurs.
 const BLACK = [0, 0, 0, 255];
 out('assets/brand/logo.svg', svg(g));
+out('assets/brand/scroll.png', png(SCROLL, 48, 0, null, SCROLL_PALETTE));
 out('assets/brand/logo.png', png(g, 552, 0.0));
 out('assets/brand/logo-topbar.png', png(g, 72, 0.0));
 out('assets/images/icon.png', png(g, 1024, 0.14, BLACK));

@@ -1,6 +1,6 @@
 import { num, rankByRecord, type League, type Matchup, type Roster, type Slot, type Sport, type Team } from '@/src/sports/models';
 import type { Connection, ProviderAdapter } from '../types';
-import { espnCookie, espnSeason, fetchEspnLeague, type EspnLeague, type EspnTeam } from './client';
+import { espnCookie, espnSeason, fetchEspnLeague, type EspnLeague, type EspnPlayer, type EspnTeam } from './client';
 
 type EspnConn = Extract<Connection, { provider: 'espn' }>;
 
@@ -93,6 +93,13 @@ export function toEspnTeams(raw: EspnLeague): Team[] {
   );
 }
 
+/** ESPN's own projection for this scoring period, in the league's scoring. */
+export function espnProjection(p: EspnPlayer | undefined, period: number | undefined): number | null {
+  if (!p?.stats || period == null) return null;
+  const row = p.stats.find((st) => st.statSourceId === 1 && st.statSplitTypeId === 1 && st.scoringPeriodId === period);
+  return row?.appliedTotal != null ? Math.round(row.appliedTotal * 10) / 10 : null;
+}
+
 export function toEspnRosters(raw: EspnLeague, sport: Sport): Roster[] {
   return (raw.teams ?? []).map((t) => ({
     teamId: String(t.id),
@@ -108,6 +115,7 @@ export function toEspnRosters(raw: EspnLeague, sport: Sport): Roster[] {
         slot: slotKind(lineupSlot),
         proTeam: p && sport === 'nfl' ? NFL_TEAMS[p.proTeamId] ?? null : null,
         injury: injury && injury !== 'ACTIVE' && injury !== 'NORMAL' ? injury.replace(/_/g, ' ') : null,
+        projected: espnProjection(p, raw.scoringPeriodId),
       };
     }),
   }));

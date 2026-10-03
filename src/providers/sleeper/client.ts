@@ -71,6 +71,10 @@ export type SleeperPlayer = {
   position?: string | null;
   team?: string | null;
   injury_status?: string | null;
+  injury_body_part?: string | null;
+  injury_notes?: string | null;
+  practice_participation?: string | null;
+  espn_id?: string | number | null;
 };
 
 export type SleeperPlayers = Record<string, SleeperPlayer>;

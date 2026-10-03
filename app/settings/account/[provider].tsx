@@ -1,8 +1,9 @@
 import * as WebBrowser from 'expo-web-browser';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, CardHead, Chips, Field, Label, Note, Screen } from '@/components/ui';
+import { sanitizeApiKey } from '@/lib/api-key';
 import { describeNetworkFailure } from '@/lib/net-errors';
 import { lastHealth } from '@/lib/storage/health';
 import { colors, fonts, themedStyles } from '@/lib/theme';
@@ -25,6 +26,7 @@ export default function Account() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [health, setHealth] = useState<Health | null>(null);
+  const usedCode = useRef<string | null>(null);
 
   // One bag of form fields; each provider uses the ones it needs.
   const [f, setF] = useState({
@@ -92,10 +94,25 @@ export default function Account() {
         return { provider, userSecretId: f.userSecretId.trim() || null, leagueIds: ids };
       }
       case 'yahoo': {
-        if (!f.clientId.trim() || !f.clientSecret.trim()) throw new Error('Enter your Yahoo app Client ID and Client Secret first.');
-        if (!f.code.trim()) throw new Error('Tap SIGN IN WITH YAHOO, approve, then paste the code Yahoo shows you.');
-        const t = await exchangeYahooCode(f.clientId, f.clientSecret, f.code);
-        return { provider, clientId: f.clientId.trim(), clientSecret: f.clientSecret.trim(), ...t };
+        const clientId = sanitizeApiKey(f.clientId);
+        const clientSecret = sanitizeApiKey(f.clientSecret);
+        if (!clientId || !clientSecret) throw new Error('Enter your Yahoo app Client ID and Client Secret first.');
+        const code = f.code.trim();
+        // A Yahoo code works exactly once. If this one was already traded for a
+        // login (or no new code was pasted), keep that login and just re-sync —
+        // sending it again is what made Yahoo say "rejected" on a retry.
+        const signedIn = existing?.provider === 'yahoo' && existing.clientId === clientId ? existing : null;
+        if (signedIn && (!code || code === usedCode.current)) return { ...signedIn, clientSecret };
+        if (!code) throw new Error('Tap SIGN IN WITH YAHOO, approve, then paste the code Yahoo shows you.');
+        if (code === usedCode.current) throw new Error('That code was already used. Tap SIGN IN WITH YAHOO for a fresh one.');
+        usedCode.current = code;
+        const t = await exchangeYahooCode(clientId, clientSecret, code);
+        const conn = { provider, clientId, clientSecret, ...t } as const;
+        // Saved the moment Yahoo hands over the login, before anything else
+        // can fail, so a retry never needs the spent code.
+        await saveConnection(conn);
+        setExisting(conn);
+        return conn;
       }
     }
   }

@@ -11,7 +11,6 @@
  */
 import { fetchWithTimeout } from '@/lib/net';
 import type { ProviderId } from '@/src/sports/models';
-import { YAHOO_AUTH_URL, YAHOO_TOKEN_URL } from './yahoo/oauth';
 
 export type Health =
   | { status: 'ok'; detail: string }
@@ -40,6 +39,8 @@ export function missingPaths(data: unknown, paths: string[]): string[] {
 export type Probe = {
   provider: ProviderId;
   url: string;
+  /** Error statuses that still count as the API answering (e.g. 401 without a login). */
+  answers?: number[];
   /** Turns the parsed body into a verdict. */
   check: (data: unknown, status: number) => Health;
 };
@@ -61,15 +62,15 @@ export function probes(season = new Date().getFullYear()): Probe[] {
     },
     {
       provider: 'yahoo',
-      // Fantasy data needs a login, so the probe checks the sign-in itself:
-      // if Yahoo moves its OAuth endpoints, every connection breaks.
-      url: 'https://api.login.yahoo.com/.well-known/openid-configuration',
-      check: (data) => {
-        if (!isObj(data)) return { status: 'changed', detail: 'Sign-in configuration is not JSON' };
-        if (data.authorization_endpoint !== YAHOO_AUTH_URL || data.token_endpoint !== YAHOO_TOKEN_URL) {
-          return { status: 'changed', detail: 'Yahoo moved its sign-in endpoints' };
-        }
-        return { status: 'ok', detail: 'Sign-in endpoints unchanged' };
+      // The data host itself. Without a login it must answer 401 with a JSON
+      // error — anything else (a redirect, an HTML page) means the API moved,
+      // which is exactly the bug that broke Yahoo in the first build.
+      url: 'https://fantasysports.yahooapis.com/fantasy/v2/game/nfl?format=json',
+      answers: [401],
+      check: (data, status) => {
+        if (status === 401 && isObj(data) && isObj(data.error)) return { status: 'ok', detail: 'API host answering (sign-in required)' };
+        if (status === 200 && isObj(data) && 'fantasy_content' in data) return { status: 'ok', detail: 'API host answering' };
+        return { status: 'changed', detail: 'API host answered in an unexpected way' };
       },
     },
     {
@@ -114,7 +115,9 @@ export async function runProbe(p: Probe, signal?: AbortSignal): Promise<Health> 
         ? { status: 'changed', detail: 'Answered with something that is not JSON' }
         : { status: 'down', detail: `HTTP ${res.status}` };
     }
-    if (!res.ok && !(p.provider === 'fantrax' && isObj(data))) return { status: 'down', detail: `HTTP ${res.status}` };
+    if (!res.ok && !(p.answers ?? []).includes(res.status) && !(p.provider === 'fantrax' && isObj(data))) {
+      return { status: 'down', detail: `HTTP ${res.status}` };
+    }
     return p.check(data, res.status);
   } catch (e) {
     return { status: 'down', detail: e instanceof Error ? e.message : String(e) };

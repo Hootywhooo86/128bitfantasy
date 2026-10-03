@@ -74,3 +74,55 @@ describe('mfl end to end', () => {
     expect(toMflMatchups(live).period).not.toBeNull();
   }, 120_000);
 });
+
+describe('yahoo', () => {
+  it('sign-in endpoints are where the app sends people', async () => {
+    const { YAHOO_AUTH_URL, YAHOO_TOKEN_URL } = await import('@/src/providers/yahoo/oauth');
+    const cfg = await getJson<{ authorization_endpoint: string; token_endpoint: string }>(
+      'yahoo',
+      'https://api.login.yahoo.com/.well-known/openid-configuration'
+    );
+    expect(cfg.authorization_endpoint).toBe(YAHOO_AUTH_URL);
+    expect(cfg.token_endpoint).toBe(YAHOO_TOKEN_URL);
+  }, 60_000);
+
+  it('the data host is the one the adapter calls, and wants a login', async () => {
+    const { YAHOO_API } = await import('@/src/providers/yahoo/adapter');
+    const res = await fetch(`${YAHOO_API}/game/nfl?format=json`, { redirect: 'manual' });
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { error?: unknown }).error).toBeTruthy();
+  }, 60_000);
+});
+
+describe('player news, projections and lists', () => {
+  it('ESPN player list has ids, names and news dates', async () => {
+    const list = await getJson<{ id: number; fullName: string; lastNewsDate?: number }[]>(
+      'espn',
+      `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${new Date().getFullYear()}/players?view=players_wl`,
+      { headers: { 'X-Fantasy-Filter': '{"filterActive":{"value":true}}' }, timeoutMs: 60_000 }
+    );
+    expect(list.length).toBeGreaterThan(1000);
+    expect(list.some((p) => p.lastNewsDate)).toBe(true);
+  }, 90_000);
+
+  it('ESPN per-player news parses', async () => {
+    const { parseEspnNews } = await import('@/src/sports/insights');
+    // Justin Jefferson — a player who will have news for years.
+    const raw = await getJson('espn', 'https://site.api.espn.com/apis/fantasy/v2/games/ffl/news/players?limit=3&playerId=4262921');
+    const n = parseEspnNews(raw);
+    expect(n.length).toBeGreaterThan(0);
+    expect(n[0].headline.length).toBeGreaterThan(10);
+  }, 60_000);
+
+  it('Sleeper projections carry PPR / half / standard points', async () => {
+    const state = await getJson<{ season: string; week: number }>('sleeper', 'https://api.sleeper.app/v1/state/nfl');
+    const rows = await getJson<{ player_id: string; stats?: Record<string, number> }[]>(
+      'sleeper',
+      `https://api.sleeper.app/projections/nfl/${state.season}/${Math.max(1, state.week)}?season_type=regular`,
+      { timeoutMs: 60_000 }
+    );
+    const r = rows.find((x) => x.stats?.pts_ppr != null);
+    expect(r?.player_id).toBeTruthy();
+    expect(typeof r?.stats?.pts_half_ppr).toBe('number');
+  }, 90_000);
+});

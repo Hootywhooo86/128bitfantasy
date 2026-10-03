@@ -25,6 +25,7 @@ npm run test:live        # hits the real APIs
 |---|---|
 | **Home · My Teams** | Only teams you're in and chose to show, filtered by sport (ALL / NFL / NBA / MLB / NHL). Record, rank, live score, how fresh it is. Opens instantly from cache, then catches up. |
 | **Team** | Lineup check, your matchup, roster by slot with injury tags, standings. Tap any team in the standings (or your opponent) to scout it. |
+| **Player info** | Every rostered player shows an injury tag (**Q**, **D**, **O**, **IR**, SUS, PUP, DTD…), a pixel **news scroll** when there's news from the last 72 hours, injury + practice detail ("Hamstring — Strain", "DNP practice"), and **projected points** for the week. Tap a player for the full news stories and an ASK COACH button. |
 | **Lineup check** | Flags starters who are OUT / IR / doubtful / questionable and empty slots, lists healthy bench players allowed in that slot, and has one button to **fix it in the provider's own app** (the app stays read-only). Home cards show a red/yellow flag. Works without AI. |
 | **Coaches Corner** | Per team. Plays: START/SIT, WAIVER WIRE, TRADE TALK, **TRADE CHECK** (tap the players on each side; the coach grades it A–F and says accept / decline / counter), ASK COACH. Opened from a team, the coach gets that team's roster, matchup and league — refreshed every question — and remembers the conversation. Scouting another team? It sees theirs and yours, for trade ideas. |
 | **Settings** | Everything else, see below. |
@@ -55,6 +56,20 @@ Each event: `{ id, type, at, app: '128bitfantasy', league: { provider, id, name,
 `id` is stable, so seeing the same change twice stores it once. 128bitlife can
 read them from Settings → 128BIT FEED → COPY FEED until the shared feed has a
 transport.
+
+## Player data sources
+
+| What | Source | Sports |
+|---|---|---|
+| Injury tag | the league provider, else Sleeper | all |
+| Injury & practice detail | Sleeper player catalog | NFL |
+| Projections | Sleeper weekly projections, matched to the league's PPR / half / standard | NFL |
+| Projections (ESPN leagues) | ESPN's own, in the league's scoring | all |
+| News + scroll | ESPN fantasy player news (Rotowire blurbs); ESPN's player list carries the last-news date | all |
+
+Players from other providers are matched by name (and team when two share a
+name). A name that still matches two players is left unmatched — no news beats
+someone else's news. No projection source → a dash, never a guess.
 
 ## Watching for API changes
 

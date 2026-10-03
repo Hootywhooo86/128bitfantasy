@@ -11,7 +11,9 @@
  * looked up.
  */
 import { getJsonItem, setJsonItem } from '@/lib/storage/kv';
-import { buildLeagueContext, cornerQuestion, tradeQuestion, type CornerMode } from '@/src/sports/coach-context';
+import { buildLeagueContext, cornerQuestion, tradeQuestion, type CornerMode, type PlayerExtras } from '@/src/sports/coach-context';
+import { insightFor, type EspnIndex, type Projections, type SleeperIndex } from '@/src/sports/insights';
+import { espnIndex, nflProjections, sleeperIndex } from '@/lib/insights';
 import type { LeagueSnapshot } from '@/src/sports/models';
 import { leagueKey } from '@/src/sports/prefs';
 import {
@@ -55,14 +57,37 @@ export function buildMessages(
   history: ThreadMessage[],
   question: string,
   canSearch: boolean,
-  alsoTeamIds: string[] = []
+  alsoTeamIds: string[] = [],
+  extras: PlayerExtras = {}
 ): ChatMessage[] {
-  const system = `${buildSystemPrompt(canSearch)}\n\n--- League context (live from the provider) ---\n${buildLeagueContext(snapshot, teamId, alsoTeamIds)}`;
+  const system = `${buildSystemPrompt(canSearch)}\n\n--- League context (live from the provider) ---\n${buildLeagueContext(snapshot, teamId, alsoTeamIds, extras)}`;
   return [
     { role: 'system', content: system },
     ...history.slice(-SEND).map((m) => ({ role: m.role, content: m.content })),
     { role: 'user', content: question },
   ];
+}
+
+/**
+ * Projections and injury detail for every rostered player, best effort: each
+ * source gets a few seconds and anything missing is simply left out.
+ */
+export async function loadExtras(snapshot: LeagueSnapshot): Promise<PlayerExtras> {
+  const within = <T>(p: Promise<T>): Promise<T | null> =>
+    Promise.race([p.catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), 6000))]);
+  const nfl = snapshot.league.sport === 'nfl';
+  const [sleeper, projections, espn] = await Promise.all([
+    nfl ? within<SleeperIndex>(sleeperIndex()) : Promise.resolve(null),
+    nfl && snapshot.period ? within<Projections>(nflProjections(snapshot.league.season, snapshot.period)) : Promise.resolve(null),
+    within<EspnIndex>(espnIndex(snapshot.league.sport)),
+  ]);
+  const out: PlayerExtras = {};
+  for (const r of snapshot.rosters)
+    for (const p of r.players) {
+      const i = insightFor(p, snapshot.league, { sleeper, projections, espn });
+      if (i.projection != null || i.detail) out[p.id] = { projection: i.projection, detail: i.detail, source: i.projectionSource };
+    }
+  return out;
 }
 
 /** A deal for TRADE CHECK: player names on each side and who it's with. */
@@ -94,7 +119,7 @@ export async function askCoach(
     signal,
     webSearch: true,
     forceSearch: true,
-    messages: buildMessages(snapshot, teamId, history, text, canSearch, deal ? [deal.partnerId] : []),
+    messages: buildMessages(snapshot, teamId, history, text, canSearch, deal ? [deal.partnerId] : [], await loadExtras(snapshot)),
   });
 
   const now = Date.now();

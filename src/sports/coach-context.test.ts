@@ -82,6 +82,13 @@ describe('coaches corner context', () => {
   });
 });
 
+describe('player extras', () => {
+  it('adds projections and injury detail to roster lines', () => {
+    const c = buildLeagueContext(snap, 'a', [], { '1': { projection: 21.44, detail: 'Ankle — Limited practice', source: 'Sleeper' } });
+    expect(c).toContain('QB Star QB (QB, KC) [Questionable: Ankle — Limited practice] proj 21.4 (Sleeper)');
+  });
+});
+
 describe('trade check', () => {
   it('names both sides and asks for a grade and a verdict', () => {
     const q = tradeQuestion(['Star QB'], ['Their RB'], 'Third', 'I need RBs');
