@@ -7,7 +7,7 @@
  * has him in a starting slot when that game started. Moving someone in after
  * his game began does nothing, so no lock has to be trusted to the phone.
  */
-import { fantasyPoints, type ScoringRules, type StatLine } from './scoring';
+import { addLines, fantasyPoints, type ScoringRules, type StatLine } from './scoring';
 import type { HostedMatchup, RosterSlots } from './types';
 
 /**
@@ -71,19 +71,21 @@ export function teamWeek(
   log: LineupMove[],
   stats: GameStat[],
   rules: ScoringRules
-): { total: number; players: PlayerWeek[] } {
+): { total: number; players: PlayerWeek[]; line: StatLine } {
   const by = new Map<string, PlayerWeek>();
   let total = 0;
+  let line: StatLine = {};
   for (const g of stats) {
     if (!isStarting(slotAt(log, teamId, g.playerId, g.start))) continue;
     const pts = fantasyPoints(g.line, rules);
     total += pts;
+    line = addLines(line, g.line);
     const pw = by.get(g.playerId) ?? { playerId: g.playerId, points: 0, games: 0 };
     pw.points = Math.round((pw.points + pts) * 100) / 100;
     pw.games += 1;
     by.set(g.playerId, pw);
   }
-  return { total: Math.round(total * 100) / 100, players: [...by.values()] };
+  return { total: Math.round(total * 100) / 100, players: [...by.values()], line };
 }
 
 /** Count of each starting slot filled in a lineup, for "too many C" checks. */

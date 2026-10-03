@@ -2,14 +2,15 @@
  * 128BIT LEAGUES as a provider, so hosted leagues sync and show next to
  * Sleeper, Yahoo and the rest.
  */
-import type { HostedSport } from '@/src/leagues/scoring';
+import type { HostedSport, StatLine } from '@/src/leagues/scoring';
+import { lastWeek } from '@/src/leagues/settings';
 import { asLeague, hostedSnapshot } from '@/src/leagues/snapshot';
-import type { PoolPlayer } from '@/src/leagues/types';
+import type { LeagueSettings, PoolPlayer } from '@/src/leagues/types';
 import { teamWeek } from '@/src/leagues/season';
 import type { ProviderAdapter } from '@/src/providers/types';
 import type { HostedConn } from './client';
 import { clientFor, must } from './client';
-import { leagueBundle, recordWeek, type LeagueBundle } from './data';
+import { leagueBundle, processDue, recordWeek, type LeagueBundle } from './data';
 import { currentWeek, playerPool, weekStats } from './stats';
 
 /** Finished weeks nobody has recorded yet get worked out here — a few per refresh, oldest first. */
@@ -21,20 +22,28 @@ export async function poolMap(sport: HostedSport, season: string): Promise<Map<s
 
 export async function liveWeek(b: LeagueBundle): Promise<number> {
   if (!b.league.seasonStart) return 1;
-  return Math.min(Math.max(1, await currentWeek(b.league.sport, b.league.seasonStart)), b.league.settings.weeks + 1);
+  const last = lastWeek(b.league.settings, b.teams.length);
+  return Math.min(Math.max(1, await currentWeek(b.league.sport, b.league.seasonStart)), last + 1);
 }
 
 async function backfill(b: LeagueBundle, week: number, pool: Map<string, PoolPlayer>): Promise<void> {
   if (!b.league.seasonStart) return;
   const done = new Set(b.weekScores.map((w) => w.week));
-  const missing = [...new Set(b.matchups.map((m) => m.week))].filter((w) => w < week && !done.has(w)).sort((a, b2) => a - b2);
+  // Every team, every finished week — whatever the format, standings and
+  // playoff brackets are worked out from these rows.
+  const last = lastWeek(b.league.settings, b.teams.length);
+  const missing: number[] = [];
+  for (let w = 1; w < week && w <= last; w++) if (!done.has(w)) missing.push(w);
   const ids = new Set(b.roster.map((r) => r.playerId).concat(b.log.map((l) => l.playerId)));
   for (const w of missing.slice(0, BACKFILL_PER_REFRESH)) {
     const ws = await weekStats(b.league.sport, b.league.season, b.league.seasonStart, w, pool, ids);
-    const scores: Record<string, number> = {};
-    for (const t of b.teams) scores[t.id] = teamWeek(t.id, b.log, ws.stats, b.league.settings.scoring).total;
+    const scores: Record<string, { points: number; line: StatLine }> = {};
+    for (const t of b.teams) {
+      const tw = teamWeek(t.id, b.log, ws.stats, b.league.settings.scoring);
+      scores[t.id] = { points: tw.total, line: tw.line };
+    }
     await recordWeek(b.league.id, w, scores);
-    for (const t of b.teams) b.weekScores.push({ week: w, teamId: t.id, points: scores[t.id] });
+    for (const t of b.teams) b.weekScores.push({ week: w, teamId: t.id, ...scores[t.id] });
   }
 }
 
@@ -50,12 +59,13 @@ export const hostedAdapter: ProviderAdapter<HostedConn> = {
     const me = s.session?.user.id;
     if (!me) return [];
     const mine = (must(await sb.from('teams').select('id, league_id, owner')) ?? []) as { id: string; league_id: string; owner: string }[];
-    const leagues = (must(await sb.from('leagues').select('id, name, sport, season, status')) ?? []) as {
+    const leagues = (must(await sb.from('leagues').select('id, name, sport, season, status, settings')) ?? []) as {
       id: string;
       name: string;
       sport: 'nhl' | 'nfl';
       season: string;
       status: string;
+      settings: Partial<LeagueSettings> | null;
     }[];
     return leagues.map((l) =>
       asLeague({
@@ -68,16 +78,18 @@ export const hostedAdapter: ProviderAdapter<HostedConn> = {
 
   async snapshot(conn, league) {
     clientFor(conn);
+    // Anything due (cleared waivers, reviewed trades) runs before we read.
+    await processDue(league.id).catch(() => undefined);
     const b = await leagueBundle(league.id);
     const pool = await poolMap(b.league.sport, b.league.season);
     if (b.league.status === 'setup' || b.league.status === 'drafting' || !b.league.seasonStart) {
-      return hostedSnapshot(b, pool, 1, [], b.league.settings.scoring);
+      return hostedSnapshot(b, pool, 1, []);
     }
     const week = await liveWeek(b);
     await backfill(b, week, pool).catch(() => undefined);
     const ids = new Set(b.roster.map((r) => r.playerId));
-    const shown = Math.min(week, b.league.settings.weeks);
+    const shown = Math.min(week, lastWeek(b.league.settings, b.teams.length));
     const ws = await weekStats(b.league.sport, b.league.season, b.league.seasonStart, shown, pool, ids);
-    return hostedSnapshot(b, pool, shown, ws.stats, b.league.settings.scoring);
+    return hostedSnapshot(b, pool, shown, ws.stats);
   },
 };

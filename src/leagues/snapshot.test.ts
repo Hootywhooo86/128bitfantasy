@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { nflWeekOf, nflWeekStart, teamGames } from './season';
-import { NHL_SCORING } from './scoring';
-import { hostedSnapshot, weekResults, type HostedInput } from './snapshot';
+import { hostedSnapshot, type HostedInput } from './snapshot';
+import { defaultSettings } from './settings';
 import type { PoolPlayer } from './types';
 
 const input: HostedInput = {
-  league: { id: 'L', name: 'Puck Bunnies', sport: 'nhl', season: '20262027', status: 'season' },
+  league: { id: 'L', name: 'Puck Bunnies', sport: 'nhl', season: '20262027', status: 'season', settings: { ...defaultSettings('nhl'), weeks: 2 } },
   teams: [
     { id: 'a', leagueId: 'L', owner: 'ua', name: 'Team A' },
     { id: 'b', leagueId: 'L', owner: 'ub', name: 'Team B' },
@@ -25,8 +25,8 @@ const input: HostedInput = {
     { teamId: 'b', playerId: 'g', slot: 'G', at: '2026-10-01T00:00:00Z' },
   ],
   weekScores: [
-    { week: 1, teamId: 'a', points: 40 },
-    { week: 1, teamId: 'b', points: 30 },
+    { week: 1, teamId: 'a', points: 40, line: {} },
+    { week: 1, teamId: 'b', points: 30, line: {} },
   ],
   myTeamId: 'a',
 };
@@ -46,12 +46,11 @@ describe('hosted snapshot', () => {
       { playerId: 'bench', start: '2026-10-13T23:00:00Z', line: { goals: 3 } },
       { playerId: 'g', start: '2026-10-13T23:00:00Z', line: { saves: 30, goalsAgainst: 2, wins: 1 } },
     ],
-    NHL_SCORING,
     123
   );
 
   it('looks like any other league', () => {
-    expect(snap.league).toMatchObject({ provider: 'bit128', id: 'L', sport: 'nhl', myTeamId: 'a', teamCount: 2 });
+    expect(snap.league).toMatchObject({ provider: 'bit128', id: 'L', sport: 'nhl', myTeamId: 'a', teamCount: 2, scoring: 'Head-to-head points' });
     expect(snap.fetchedAt).toBe(123);
     expect(snap.period).toBe(2);
   });
@@ -70,8 +69,10 @@ describe('hosted snapshot', () => {
     expect(a.players.find((p) => p.id === 'bench')).toMatchObject({ slot: 'bench', points: null });
   });
 
-  it('skips a week until both sides are recorded', () => {
-    expect(weekResults(input.matchups, [{ week: 1, teamId: 'a', points: 1 }], 3)).toEqual([]);
+  it('lists empty starting spots for Lineup Check', () => {
+    const a = snap.rosters.find((r) => r.teamId === 'a')!;
+    expect(a.emptySlots).toContain('G');
+    expect(a.emptySlots!.filter((x) => x === 'C')).toHaveLength(1);
   });
 });
 

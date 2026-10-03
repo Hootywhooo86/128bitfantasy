@@ -30,7 +30,7 @@ describe('NHL box score', () => {
 
   it('gives the winning goalie a shutout, and the backups nothing', () => {
     // Swayman: 21 saves, 0 GA, W, 60:00.
-    expect(g.lines.get('8480280')).toEqual({ saves: 21, goalsAgainst: 0, wins: 1, shutouts: 1 });
+    expect(g.lines.get('8480280')).toEqual({ saves: 21, shotsAgainst: 21, goalsAgainst: 0, goalieMinutes: 60, wins: 1, shutouts: 1 });
     expect(fantasyPoints(g.lines.get('8480280')!, NHL_SCORING)).toBe(4 + 4.2 + 3);
     const goalieIds = [...g.lines.entries()].filter(([, l]) => 'saves' in l).map(([id]) => id);
     expect(goalieIds).toHaveLength(2);

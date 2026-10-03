@@ -89,6 +89,7 @@ function skaterLine(p: Record<string, unknown>): StatLine {
   return {
     goals: num(p.goals) ?? 0,
     assists: num(p.assists) ?? 0,
+    points: num(p.points) ?? (num(p.goals) ?? 0) + (num(p.assists) ?? 0),
     ppGoals: num(p.powerPlayGoals) ?? 0,
     shots: num(p.sog) ?? 0,
     hits: num(p.hits) ?? 0,
@@ -105,7 +106,10 @@ function goalieLine(p: Record<string, unknown>, final: boolean): StatLine | null
   const win = p.decision === 'W';
   return {
     saves: num(p.saves) ?? 0,
+    shotsAgainst: num(p.shotsAgainst) ?? 0,
     goalsAgainst: ga,
+    // Kept for save % and GAA categories; no points value of its own.
+    goalieMinutes: Math.round(toiMinutes(p.toi) * 100) / 100,
     wins: win ? 1 : 0,
     // Only once it's over: 0 goals against in the 2nd period is not a shutout yet.
     shutouts: final && win && ga === 0 && toiMinutes(p.toi) >= 59.9 ? 1 : 0,
@@ -153,7 +157,9 @@ export function buildNhlPool(
       line: {
         goals: num(r.goals) ?? 0,
         assists: num(r.assists) ?? 0,
+        points: num(r.points) ?? 0,
         ppGoals: num(r.ppGoals) ?? 0,
+        ppPoints: num(r.ppPoints) ?? 0,
         shots: num(r.shots) ?? 0,
         plusMinus: num(r.plusMinus) ?? 0,
         pim: num(r.penaltyMinutes) ?? 0,
@@ -168,7 +174,9 @@ export function buildNhlPool(
       line: {
         wins: num(r.wins) ?? 0,
         saves: num(r.saves) ?? 0,
+        shotsAgainst: num(r.shotsAgainst) ?? 0,
         goalsAgainst: num(r.goalsAgainst) ?? 0,
+        goalieMinutes: Math.round(((num(r.timeOnIce) ?? 0) / 60) * 100) / 100,
         shutouts: num(r.shutouts) ?? 0,
       },
     });

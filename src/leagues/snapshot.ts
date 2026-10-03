@@ -3,21 +3,25 @@
  * Check, Coaches Corner and alerts all work on it unchanged.
  */
 import type { League, LeagueSnapshot, Matchup, Roster, RosterPlayer, Team } from '@/src/sports/models';
-import { isStarting, standings, teamWeek, type GameStat, type LineupMove, type WeekResult } from './season';
-import type { ScoringRules } from './scoring';
-import type { HostedMatchup, HostedTeam, PoolPlayer, RosterEntry } from './types';
+import { categoryDefs, h2hCats } from './categories';
+import { isStarting, teamWeek, type GameStat, type LineupMove } from './season';
+import { leagueTable, matchupsForWeek, type WeekRow } from './standings';
+import { FORMAT_LABELS, type HostedMatchup, type HostedTeam, type LeagueSettings, type PoolPlayer, type RosterEntry } from './types';
 
 export type HostedInput = {
-  league: { id: string; name: string; sport: 'nhl' | 'nfl'; season: string; status: string };
+  league: { id: string; name: string; sport: 'nhl' | 'nfl'; season: string; status: string; settings: LeagueSettings };
   teams: HostedTeam[];
   roster: (RosterEntry & { position: string })[];
   matchups: HostedMatchup[];
   log: LineupMove[];
-  weekScores: { week: number; teamId: string; points: number }[];
+  weekScores: WeekRow[];
   myTeamId: string | null;
 };
 
-export function asLeague(i: Pick<HostedInput, 'league' | 'myTeamId'> & { teamCount: number | null }): League {
+export function asLeague(
+  i: { league: { id: string; name: string; sport: 'nhl' | 'nfl'; season: string; settings?: Partial<LeagueSettings> | null }; myTeamId: string | null; teamCount: number | null }
+): League {
+  const f = i.league.settings?.format;
   return {
     provider: 'bit128',
     id: i.league.id,
@@ -26,41 +30,19 @@ export function asLeague(i: Pick<HostedInput, 'league' | 'myTeamId'> & { teamCou
     season: i.league.season,
     teamCount: i.teamCount,
     myTeamId: i.myTeamId,
-    scoring: 'H2H Points',
+    scoring: f ? FORMAT_LABELS[f] : 'Head-to-head points',
   };
-}
-
-/** Finished weeks as results, from the recorded week scores. */
-export function weekResults(matchups: HostedMatchup[], weekScores: HostedInput['weekScores'], beforeWeek: number): WeekResult[] {
-  const pts = new Map(weekScores.map((w) => [`${w.week}:${w.teamId}`, w.points]));
-  const out: WeekResult[] = [];
-  for (const m of matchups) {
-    if (m.week >= beforeWeek) continue;
-    const h = pts.get(`${m.week}:${m.home}`);
-    if (h == null) continue;
-    const a = m.away ? pts.get(`${m.week}:${m.away}`) : null;
-    if (m.away && a == null) continue;
-    out.push({ week: m.week, home: m.home, away: m.away, homePts: h, awayPts: a ?? null });
-  }
-  return out;
 }
 
 const slotKind = (slot: string): RosterPlayer['slot'] => (slot === 'IR' ? 'ir' : isStarting(slot) ? 'starter' : 'bench');
 
-export function hostedSnapshot(
-  i: HostedInput,
-  pool: Map<string, PoolPlayer>,
-  week: number,
-  stats: GameStat[],
-  rules: ScoringRules,
-  now = Date.now()
-): LeagueSnapshot {
-  const table = standings(
-    i.teams.map((t) => t.id),
-    weekResults(i.matchups, i.weekScores, week)
-  );
+export function hostedSnapshot(i: HostedInput, pool: Map<string, PoolPlayer>, week: number, stats: GameStat[], now = Date.now()): LeagueSnapshot {
+  const s = i.league.settings;
+  const sport = i.league.sport;
+  const ids = i.teams.map((t) => t.id);
+  const table = leagueTable(sport, s, ids, i.matchups, i.weekScores);
   const row = new Map(table.map((r) => [r.teamId, r]));
-  const played = table.some((r) => r.wins + r.losses + r.ties > 0);
+  const played = i.weekScores.length > 0;
   const teams: Team[] = i.teams.map((t) => {
     const r = row.get(t.id);
     return {
@@ -68,18 +50,23 @@ export function hostedSnapshot(
       name: t.name,
       owner: null,
       record: r ? { wins: r.wins, losses: r.losses, ties: r.ties } : null,
-      pointsFor: r?.pointsFor ?? 0,
+      // Roto shows its roto points; everything else its fantasy points.
+      pointsFor: s.format === 'roto' ? (r?.score ?? 0) : (r?.pointsFor ?? 0),
       pointsAgainst: r?.pointsAgainst ?? 0,
       rank: played && r ? r.rank : null,
     };
   });
 
-  const weekBy = new Map(i.teams.map((t) => [t.id, teamWeek(t.id, i.log, stats, rules)]));
+  const weekBy = new Map(i.teams.map((t) => [t.id, teamWeek(t.id, i.log, stats, s.scoring)]));
   const rosters: Roster[] = i.teams.map((t) => {
     const mine = i.roster.filter((r) => r.teamId === t.id);
     const pts = new Map((weekBy.get(t.id)?.players ?? []).map((p) => [p.playerId, p.points]));
+    const used: Record<string, number> = {};
+    for (const r of mine) used[r.slot] = (used[r.slot] ?? 0) + 1;
+    const emptySlots = Object.entries(s.slots).flatMap(([slot, n]) => Array<string>(Math.max(0, n - (used[slot] ?? 0))).fill(slot));
     return {
       teamId: t.id,
+      emptySlots,
       players: mine.map((r) => {
         const p = pool.get(r.playerId);
         return {
@@ -98,20 +85,29 @@ export function hostedSnapshot(
     };
   });
 
-  const matchups: Matchup[] = i.matchups
-    .filter((m) => m.week === week)
-    .map((m) => ({
+  const defs = categoryDefs(sport, s.categories);
+  const cats = s.format === 'h2h_cats' || s.format === 'h2h_most_cats';
+  const matchups: Matchup[] = matchupsForWeek(sport, s, ids, i.matchups, i.weekScores, week, i.league.id).map((m) => {
+    const a = weekBy.get(m.home);
+    const b = m.away ? weekBy.get(m.away) : null;
+    // Category formats show categories won, the way the scoreboard reads.
+    if (cats && a && b) {
+      const r = h2hCats(defs, a.line, b.line);
+      return { period: week, home: { teamId: m.home, points: r.wins }, away: { teamId: m.away!, points: r.losses } };
+    }
+    return {
       period: week,
-      home: { teamId: m.home, points: weekBy.get(m.home)?.total ?? 0 },
-      away: m.away ? { teamId: m.away, points: weekBy.get(m.away)?.total ?? 0 } : null,
-    }));
+      home: { teamId: m.home, points: a?.total ?? 0 },
+      away: m.away ? { teamId: m.away, points: b?.total ?? 0 } : null,
+    };
+  });
 
   return {
-    league: asLeague({ ...i, teamCount: i.teams.length }),
+    league: asLeague({ league: i.league, myTeamId: i.myTeamId, teamCount: i.teams.length }),
     teams,
     rosters,
     matchups,
-    period: i.matchups.length ? week : null,
+    period: week,
     fetchedAt: now,
   };
 }

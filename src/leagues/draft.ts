@@ -2,18 +2,18 @@
  * Snake draft: order, whose turn, who's left, and auto-pick.
  */
 import { fantasyPoints, type ScoringRules } from './scoring';
-import { SLOT_ACCEPTS, type DraftPick, type LeagueSettings, type PoolPlayer, type RosterSlots } from './types';
+import { SLOT_ACCEPTS, type DraftPick, type DraftType, type LeagueSettings, type PoolPlayer, type RosterSlots } from './types';
 
 export function rosterSize(s: Pick<LeagueSettings, 'slots' | 'bench'>): number {
   return Object.values(s.slots).reduce((a, b) => a + b, 0) + s.bench;
 }
 
-/** Team on the clock for each pick number (0-based), snaking every round. */
-export function snakeTeam(order: string[], pickNo: number): string {
+/** Team on the clock for each pick number (0-based): snake reverses every other round, linear never does. */
+export function snakeTeam(order: string[], pickNo: number, type: DraftType = 'snake'): string {
   const n = order.length;
   const round = Math.floor(pickNo / n);
   const i = pickNo % n;
-  return order[round % 2 === 0 ? i : n - 1 - i];
+  return order[type === 'linear' || round % 2 === 0 ? i : n - 1 - i];
 }
 
 export function totalPicks(order: string[], s: Pick<LeagueSettings, 'slots' | 'bench'>): number {
@@ -28,11 +28,15 @@ export type DraftState = {
   taken: Set<string>;
 };
 
-export function draftState(order: string[], settings: Pick<LeagueSettings, 'slots' | 'bench'>, picks: DraftPick[]): DraftState {
+export function draftState(
+  order: string[],
+  settings: Pick<LeagueSettings, 'slots' | 'bench'> & { draftType?: DraftType },
+  picks: DraftPick[]
+): DraftState {
   const taken = new Set(picks.map((p) => p.playerId));
   const next = picks.length;
   if (order.length === 0 || next >= totalPicks(order, settings)) return { pickNo: null, onClock: null, round: null, taken };
-  return { pickNo: next, onClock: snakeTeam(order, next), round: Math.floor(next / order.length) + 1, taken };
+  return { pickNo: next, onClock: snakeTeam(order, next, settings.draftType), round: Math.floor(next / order.length) + 1, taken };
 }
 
 /** Random order for the draft, from a seed so every phone agrees if it's ever re-derived. */
