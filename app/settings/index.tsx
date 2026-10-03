@@ -126,7 +126,7 @@ export default function Settings() {
       <MenuRow
         icon={signedIn.has('bit128') ? '●' : '○'}
         name="128BIT LEAGUES"
-        sub="Host your own hockey or football league with friends: draft, lineups, live scoring. Read & write."
+        sub="Host your own hockey, football, basketball or baseball league: draft, keepers, trades, live scoring. Read & write."
         value={signedIn.has('bit128') ? `${leagues.filter((l) => l.provider === 'bit128').length} league(s)` : 'Set up'}
         onPress={() => router.push('/hosted')}
       />

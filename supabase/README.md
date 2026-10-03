@@ -39,7 +39,9 @@
 - **How changes are checked.** Every change goes through a database function that checks it is allowed: your turn, your team, or the commissioner. The publishable key is safe to share for this reason.
 - **Where scores come from.** Points are never typed in. They are computed on each phone from:
   - Hockey: the NHL's public stats (`api-web.nhle.com`, `api.nhle.com/stats`).
+  - Baseball: MLB's public Stats API (`statsapi.mlb.com`).
   - Football: Sleeper's public weekly stats.
+  - Basketball: Sleeper's public per-game stats, with tip-off times from ESPN's scoreboard.
 
   Football scoring uses Sleeper's own PPR table, so a week scores the same as it would on Sleeper.
 - **When a player counts.** Every lineup move is logged with the server's clock. A game counts for a player only if he was in a starting slot when the game began. Moving someone in late does nothing for that game, so the app doesn't need to enforce locks.
@@ -55,8 +57,12 @@
 
   If a player has moved or a roster would overflow, the trade fails instead.
 - **Settings.** The commissioner can change anything before the draft. After it, format, lineup, bench, categories, weeks and draft type lock. Scoring, IR, playoffs, waivers and trades can still change.
+- **Draft picks** are tradeable: this season's until they're used, and next season's any time. The draft clock follows the new owner.
+- **Auction drafts.** Teams take turns nominating, and everyone bids. Each bid restarts the clock. A team's maximum bid always keeps $1 for every other spot it still has to fill. Once the clock runs out, any phone in the league can close the sale.
+- **New seasons.** The commissioner starts next season from the old one: same teams, owners, divisions and settings, plus any picks traded for that season. Everyone picks keepers from their final roster, and the commissioner starts the draft, which is shorter by the keeper count (dynasty leagues set their own number of rounds).
+- **Commissioner tools.** The commissioner can move or release any player, set any lineup, rename teams and put them in divisions, fix waiver order and budgets, pick for the team on the clock, remove a team before the draft, or hand the league to someone else. All of it shows in league activity.
 - **Upgrading.** Re-running `schema.sql` on an existing project adds the new tables and keeps every league.
 
 ## Tests
 
-`supabase/test/flow.sql` plays a whole league through the draft as three users. `supabase/test/moves.sql` covers the rest: lineups, IR, both waiver types, the add limit, all three trade-review modes, the deadline and settings locks. Both run in CI against Postgres 16 on every pull request.
+`supabase/test/flow.sql` plays a whole league through the draft as three users. `supabase/test/moves.sql` covers the rest: lineups, IR, both waiver types, the add limit, all three trade-review modes, the deadline and settings locks. `supabase/test/extras.sql` covers picks, auctions, keepers, new seasons, commissioner tools and positions for all four sports. All three run in CI against Postgres 16 on every pull request, on a fresh database.

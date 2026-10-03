@@ -139,7 +139,7 @@ export type HostedLeague = {
 
 export type HostedTeam = { id: string; leagueId: string; owner: string; name: string; division?: number | null };
 
-export type DraftPick = { leagueId: string; pickNo: number; teamId: string; playerId: string; madeAt: string; auto: boolean };
+export type DraftPick = { leagueId: string; pickNo: number; teamId: string; playerId: string; madeAt: string; auto: boolean; price?: number | null };
 
 /** One player on one team. `slot` is a lineup slot, "BN" or "IR". */
 export type RosterEntry = { leagueId: string; teamId: string; playerId: string; slot: string };

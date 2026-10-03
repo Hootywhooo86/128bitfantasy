@@ -6,7 +6,7 @@ import { poolMap } from '@/lib/leagues/adapter';
 import { addDrop, cancelClaim, leagueBundle, placeClaim, processDue, type LeagueBundle } from '@/lib/leagues/data';
 import { colors, fonts, themedStyles } from '@/lib/theme';
 import { rankPool, rosterSize } from '@/src/leagues/draft';
-import type { PoolPlayer } from '@/src/leagues/types';
+import { isFlexSlot, type PoolPlayer } from '@/src/leagues/types';
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 
@@ -57,10 +57,10 @@ export default function FreeAgents() {
   const mine = b.roster.filter((r) => r.teamId === b.myTeamId);
   const active = mine.filter((r) => r.slot !== 'IR');
   const full = active.length >= rosterSize(s);
-  const positions = ['ALL', ...Object.keys(s.slots).filter((k) => !['UTIL', 'FLEX', 'SUPERFLEX', 'F'].includes(k))];
+  const positions = ['ALL', ...Object.keys(s.slots).filter((k) => !isFlexSlot(k, b.league.sport))];
   const want = q.trim().toLowerCase();
   const list = ranked
-    .filter((p) => !owned.has(p.id) && (pos === 'ALL' || p.position === pos) && (!want || p.name.toLowerCase().includes(want)))
+    .filter((p) => !owned.has(p.id) && (pos === 'ALL' || p.position.split('/').includes(pos)) && (!want || p.name.toLowerCase().includes(want)))
     .slice(0, 50);
   const pname = (pid: string) => pool?.get(pid)?.name ?? pid;
   const claims = b.myClaims.filter((c) => c.status === 'pending');

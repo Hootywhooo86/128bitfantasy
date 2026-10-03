@@ -15,12 +15,14 @@ import {
 import { joinLeague, myHostedLeagues, type LeagueRow } from '@/lib/leagues/data';
 import { removeConnection } from '@/lib/storage/connections';
 import { colors, fonts, themedStyles } from '@/lib/theme';
+import { SPORT_NAMES, type HostedSport } from '@/src/leagues/scoring';
 import { FORMAT_LABELS } from '@/src/leagues/types';
 import { PROVIDER_INFO } from '@/src/providers/info';
 import { syncLeagues } from '@/src/sports/hub';
 
-const STATUS: Record<string, string> = { setup: 'Waiting for friends', drafting: 'Drafting now', season: 'In season', done: 'Season over' };
+const SPORT_ICON: Record<HostedSport, string> = { nhl: '◆', nfl: '◈', nba: '●', mlb: '◇' };
 
+const STATUS: Record<string, string> = { setup: 'Waiting for friends', drafting: 'Drafting now', season: 'In season', done: 'Season over' };
 
 export default function Hosted() {
   const router = useRouter();
@@ -77,7 +79,8 @@ export default function Hosted() {
       <Screen section="128bit Leagues" back>
         <Text style={st.title}>Run your own league</Text>
         <Text style={st.body}>
-          Hockey or football with friends: snake draft, daily lineups, free agents, live scoring from the NHL and NFL stat feeds. It lives in a
+          Hockey, football, basketball or baseball with friends: snake, linear or auction drafts, keepers and dynasty, daily lineups,
+          waivers, trades, live scoring from the leagues&apos; own stat feeds. It lives in a
           free Supabase project the commissioner owns — no fees, no ads.
         </Text>
         <Card>
@@ -172,9 +175,9 @@ export default function Hosted() {
         leagues.map((l) => (
           <MenuRow
             key={l.id}
-            icon={l.sport === 'nhl' ? '◆' : '◈'}
+            icon={SPORT_ICON[l.sport]}
             name={l.name}
-            sub={`${l.sport === 'nhl' ? 'Hockey' : 'Football'} · ${FORMAT_LABELS[l.settings.format]} · ${STATUS[l.status] ?? l.status} · code ${l.inviteCode}`}
+            sub={`${SPORT_NAMES[l.sport]} · ${l.season} · ${FORMAT_LABELS[l.settings.format]} · ${STATUS[l.status] ?? l.status} · code ${l.inviteCode}`}
             onPress={() => router.push({ pathname: '/hosted/[id]', params: { id: l.id } })}
           />
         ))
@@ -186,7 +189,7 @@ export default function Hosted() {
       <MenuRow
         icon="+"
         name="NEW LEAGUE"
-        sub="Hockey or football · format, roster, scoring, draft, playoffs, waivers, trades"
+        sub="Hockey, football, basketball or baseball · format, roster, scoring, draft, keepers, playoffs, waivers, trades"
         onPress={() => router.push('/hosted/new')}
       />
 

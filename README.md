@@ -9,11 +9,12 @@ who to start, who to pick up, and where to trade.
 
 Expo / React Native, same stack, look and AI setup as 128BIT FIT.
 
-**128BIT LEAGUES** — run your own **hockey** or **football** league with friends,
-right in the app: invite code, live snake draft with a pick clock and auto-pick,
-daily lineups, free agents, head-to-head points, standings. Scores come from the
-NHL's own stats and Sleeper's weekly stats (football scores match Sleeper's PPR
-to the hundredth). It lives in a free Supabase project the commissioner owns —
+**128BIT LEAGUES** — run your own **hockey, football, basketball or baseball**
+league with friends, right in the app: invite code, snake / linear / auction
+drafts, keepers and dynasty, divisions, daily lineups, waivers, trades of players
+and picks, commissioner tools. Scores come from the leagues' own free feeds: the
+NHL and MLB stats APIs, and Sleeper's NFL and NBA stats (football scores match
+Sleeper's PPR to the hundredth). It lives in a free Supabase project the commissioner owns —
 setup in [`supabase/README.md`](supabase/README.md).
 
 ## Run it
@@ -35,7 +36,7 @@ npm run test:live        # hits the real APIs
 | **Player info** | Every rostered player shows an injury tag (**Q**, **D**, **O**, **IR**, SUS, PUP, DTD…), a pixel **news scroll** when there's news from the last 72 hours, injury + practice detail ("Hamstring — Strain", "DNP practice"), and **projected points** for the week. Tap a player for the full news stories and an ASK COACH button. |
 | **Lineup check** | Flags starters who are OUT / IR / doubtful / questionable and empty slots, lists healthy bench players allowed in that slot, and has one button to **fix it in the provider's own app** (the app stays read-only). Home cards show a red/yellow flag. Works without AI. |
 | **Coaches Corner** | Per team. Plays: START/SIT, WAIVER WIRE, TRADE TALK, **TRADE CHECK** (tap the players on each side; the coach grades it A–F and says accept / decline / counter), ASK COACH. Opened from a team, the coach gets that team's roster, matchup and league — refreshed every question — and remembers the conversation. Scouting another team? It sees theirs and yours, for trade ideas. |
-| **128BIT LEAGUES** | Your own league, every setting yours: **format** (head-to-head points, head-to-head categories, most categories, total points, rotisserie), **teams** 2–20, **roster** (every position slot, F/UTIL/FLEX/SUPERFLEX, bench, IR), **scoring** (every stat's points, PPR presets, 15 hockey categories incl. GAA and SV%), **season** weeks and **playoffs** (2–8 teams, byes for top seeds), **draft** (snake or same order every round, pick clock, auto-pick), **waivers** (rolling priority, FAAB blind bids, or free agents only; waiver days; adds per week), **trades** (instant, commissioner review or league veto vote; review window; deadline). Create/join with a 6-letter code, live draft room, set lineup (swaps), free agents & claims, trade center (with Coaches Corner grading), league activity, champion. In season it shows on Home and in the team screen like any other league. |
+| **128BIT LEAGUES** | Your own league, every setting yours: **format** (head-to-head points, head-to-head categories, most categories, total points, rotisserie), **teams** 2–20, **roster** (every position slot, F/UTIL/FLEX/SUPERFLEX, bench, IR), **scoring** (every stat's points, PPR presets, 15 hockey categories incl. GAA and SV%), **season** weeks and **playoffs** (2–8 teams, byes for top seeds), **draft** (snake, same order every round, or **auction** with budgets and a bid clock; pick clock; auto-pick; **tradeable draft picks**, this season's and next), **keepers & dynasty** (keep N or everyone; new season carries teams, divisions and traded picks over), **divisions** (division winners seeded first), **commissioner tools** (move/release any player, set any lineup, edit teams and budgets, pick for the team on the clock, hand over the league), **waivers** (rolling priority, FAAB blind bids, or free agents only; waiver days; adds per week), **trades** (instant, commissioner review or league veto vote; review window; deadline). Create/join with a 6-letter code, live draft room, set lineup (swaps), free agents & claims, trade center (with Coaches Corner grading), league activity, champion. In season it shows on Home and in the team screen like any other league. |
 | **Settings** | Everything else, see below. |
 
 Settings holds:

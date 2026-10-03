@@ -51,7 +51,7 @@ export const hostedAdapter: ProviderAdapter<HostedConn> = {
   id: 'bit128',
   label: '128BIT LEAGUES',
   stability: 'official',
-  sports: ['nhl', 'nfl'],
+  sports: ['nhl', 'nfl', 'nba', 'mlb'],
 
   async listLeagues(conn) {
     const sb = clientFor(conn);
@@ -62,7 +62,7 @@ export const hostedAdapter: ProviderAdapter<HostedConn> = {
     const leagues = (must(await sb.from('leagues').select('id, name, sport, season, status, settings')) ?? []) as {
       id: string;
       name: string;
-      sport: 'nhl' | 'nfl';
+      sport: HostedSport;
       season: string;
       status: string;
       settings: Partial<LeagueSettings> | null;

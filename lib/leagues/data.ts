@@ -81,6 +81,8 @@ export type LeagueBundle = {
   pickOwners: PickOwners;
   /** Keepers chosen for this season (player → team). */
   keepers: Map<string, string>;
+  /** Next season's league, once the commissioner has started it. */
+  nextId: string | null;
   picks: DraftPick[];
   roster: (RosterEntry & { position: string })[];
   matchups: HostedMatchup[];
@@ -103,7 +105,7 @@ export async function leagueBundle(id: string): Promise<LeagueBundle> {
   const sb = await hosted();
   const { data: s } = await sb.auth.getSession();
   const me = s.session?.user.id ?? null;
-  const [lg, teams, picks, roster, matchups, log, weeks, waivers, claims, trades, votes, activity, owners, kept] = await Promise.all([
+  const [lg, teams, picks, roster, matchups, log, weeks, waivers, claims, trades, votes, activity, owners, kept, next] = await Promise.all([
     sb.from('leagues').select('*').eq('id', id).single(),
     sb.from('teams').select('*').eq('league_id', id),
     sb.from('picks').select('*').eq('league_id', id).order('pick_no'),
@@ -119,6 +121,7 @@ export async function leagueBundle(id: string): Promise<LeagueBundle> {
     sb.from('transactions').select('*').eq('league_id', id).order('at', { ascending: false }).limit(60),
     sb.from('pick_owners').select('*').eq('league_id', id),
     sb.from('keepers').select('*').eq('league_id', id),
+    sb.from('leagues').select('id').eq('previous_id', id),
   ]);
   const opt = <T,>(res: { data: T | null; error: unknown }): T | [] => (res.error ? [] : (res.data ?? []));
   const voteRows = opt(votes) as Row[];
@@ -173,6 +176,7 @@ export async function leagueBundle(id: string): Promise<LeagueBundle> {
     })),
     pickOwners: new Map((opt(owners) as Row[]).map((r) => [pickKey(String(r.season), Number(r.round), String(r.original_team)), String(r.owner)])),
     keepers: new Map((opt(kept) as Row[]).map((r) => [String(r.player_id), String(r.team_id)])),
+    nextId: ((opt(next) as Row[])[0]?.id as string | undefined) ?? null,
     picks: ((must(picks) ?? []) as Row[]).map((r) => ({
       leagueId: id,
       pickNo: Number(r.pick_no),
@@ -180,6 +184,7 @@ export async function leagueBundle(id: string): Promise<LeagueBundle> {
       playerId: String(r.player_id),
       madeAt: String(r.made_at),
       auto: !!r.auto,
+      price: r.price == null ? null : Number(r.price),
     })),
     roster: ((must(roster) ?? []) as Row[]).map((r) => ({
       leagueId: id,

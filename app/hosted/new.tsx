@@ -5,17 +5,17 @@ import { LeagueSettingsEditor } from '@/components/LeagueSettingsEditor';
 import { Button, Card, Chips, Field, Note, Screen } from '@/components/ui';
 import { createLeague } from '@/lib/leagues/data';
 import { colors, fonts, themedStyles } from '@/lib/theme';
-import { nhlSeasonFor } from '@/src/leagues/nhl';
-import type { HostedSport } from '@/src/leagues/scoring';
-import { defaultSettings, settingsProblems } from '@/src/leagues/settings';
+import { HOSTED_SPORTS, type HostedSport } from '@/src/leagues/scoring';
+import { defaultSettings, seasonFor, settingsProblems } from '@/src/leagues/settings';
 import type { LeagueSettings } from '@/src/leagues/types';
 import { syncLeagues } from '@/src/sports/hub';
 
-/** The season a new league plays: NHL numbers it 20262027, the NFL by the year it kicks off. */
-function seasonFor(sport: HostedSport, now = new Date()): string {
-  if (sport === 'nhl') return nhlSeasonFor(now);
-  return String(now.getUTCMonth() < 2 ? now.getUTCFullYear() - 1 : now.getUTCFullYear());
-}
+const PLACEHOLDER: Record<HostedSport, string> = {
+  nhl: 'Saturday Night Puck',
+  nfl: 'Sunday Funday',
+  nba: 'Buckets League',
+  mlb: 'Boys of Summer',
+};
 
 export default function NewLeague() {
   const router = useRouter();
@@ -51,17 +51,14 @@ export default function NewLeague() {
       <Text style={st.body}>Everything can be changed before the draft. After it, the lineup and format lock; scoring, waivers and trades can still change.</Text>
       <Card>
         <Chips
-          items={[
-            { id: 'nhl', label: 'HOCKEY' },
-            { id: 'nfl', label: 'FOOTBALL' },
-          ]}
+          items={HOSTED_SPORTS}
           value={sport}
           onChange={(v) => {
             setSport(v);
             setSettings(defaultSettings(v));
           }}
         />
-        <Field label="LEAGUE NAME" value={name} onChangeText={setName} autoCapitalize="words" placeholder={sport === 'nhl' ? 'Saturday Night Puck' : 'Sunday Funday'} />
+        <Field label="LEAGUE NAME" value={name} onChangeText={setName} autoCapitalize="words" placeholder={PLACEHOLDER[sport]} />
         <Field label="YOUR TEAM NAME" value={teamName} onChangeText={setTeamName} autoCapitalize="words" />
       </Card>
       <LeagueSettingsEditor sport={sport} value={settings} onChange={setSettings} teams={teams} onTeams={setTeams} />

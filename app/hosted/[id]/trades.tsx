@@ -15,6 +15,8 @@ import {
   type Trade,
 } from '@/lib/leagues/data';
 import { colors, fonts, themedStyles } from '@/lib/theme';
+import { draftRounds, pickLabel, pickUsed, teamPicks } from '@/src/leagues/draft';
+import { nextSeason } from '@/src/leagues/settings';
 import type { PoolPlayer } from '@/src/leagues/types';
 
 const STATUS: Record<Trade['status'], string> = {
@@ -38,6 +40,8 @@ export default function Trades() {
   const [partner, setPartner] = useState<string | null>(null);
   const [give, setGive] = useState<string[]>([]);
   const [get, setGet] = useState<string[]>([]);
+  const [givePicks, setGivePicks] = useState<string[]>([]);
+  const [getPicks, setGetPicks] = useState<string[]>([]);
   const [note, setNote] = useState('');
 
   const reload = useCallback(async () => {
@@ -93,6 +97,20 @@ export default function Trades() {
   const pastDeadline = !!s.trades.deadline && new Date().toISOString().slice(0, 10) > s.trades.deadline;
 
   const toggle = (list: string[], set: (l: string[]) => void, p: string) => set(list.includes(p) ? list.filter((x) => x !== p) : [...list, p]);
+  const plabel = (k: string) => pickLabel(k, teamName);
+  // Picks still to come: this season's before they're made (not in auctions), and next season's.
+  const teamIds = b.teams.map((t) => t.id);
+  const thisSeason = b.league.status === 'setup' || (b.league.status === 'drafting' && s.draftType !== 'auction');
+  const picksOf = (t: string) => [
+    ...(thisSeason
+      ? teamPicks(t, teamIds, b.league.season, draftRounds(s, !b.league.previousId), b.pickOwners).filter(
+          (k) => b.league.status === 'setup' || !pickUsed(k, b.league.draftOrder, s.draftType, b.picks.length)
+        )
+      : []),
+    ...(s.draftType !== 'auction' ? teamPicks(t, teamIds, nextSeason(b.league.season), draftRounds(s, false), b.pickOwners) : []),
+  ];
+  const canTrade = !!me && b.league.status !== 'done' && !pastDeadline;
+  const total = give.length + get.length + givePicks.length + getPicks.length;
 
   return (
     <Screen section="Trades" back onRefresh={() => reload()} refreshing={false}>
@@ -131,7 +149,7 @@ export default function Trades() {
                           provider: 'bit128',
                           id: b.league.id,
                           team: me!,
-                          q: `Should I accept this trade? I give ${t.get.map(pname).join(', ') || 'nothing'} and get ${t.give.map(pname).join(', ') || 'nothing'}.`,
+                          q: `Should I accept this trade? I give ${[...t.get.map(pname), ...t.getPicks.map(plabel)].join(', ') || 'nothing'} and get ${[...t.give.map(pname), ...t.givePicks.map(plabel)].join(', ') || 'nothing'}.`,
                         },
                       })
                     }
@@ -151,7 +169,7 @@ export default function Trades() {
         );
       })}
 
-      {me && b.league.status === 'season' && !pastDeadline ? (
+      {canTrade && me ? (
         <>
           <Label>PROPOSE A TRADE</Label>
           <Card>
@@ -161,6 +179,7 @@ export default function Trades() {
               onChange={(v) => {
                 setPartner(v);
                 setGet([]);
+                setGetPicks([]);
               }}
             />
             {partner ? (
@@ -169,20 +188,28 @@ export default function Trades() {
                 {rosterOf(me).map((r) => (
                   <Pick key={r.playerId} on={give.includes(r.playerId)} label={pname(r.playerId)} onPress={() => toggle(give, setGive, r.playerId)} />
                 ))}
+                {picksOf(me).map((k) => (
+                  <Pick key={k} on={givePicks.includes(k)} label={`PICK · ${plabel(k)}`} onPress={() => toggle(givePicks, setGivePicks, k)} />
+                ))}
                 <Text style={st.side}>{`YOU GET FROM ${teamName(partner).toUpperCase()}`}</Text>
                 {rosterOf(partner).map((r) => (
                   <Pick key={r.playerId} on={get.includes(r.playerId)} label={pname(r.playerId)} onPress={() => toggle(get, setGet, r.playerId)} />
                 ))}
+                {picksOf(partner).map((k) => (
+                  <Pick key={k} on={getPicks.includes(k)} label={`PICK · ${plabel(k)}`} onPress={() => toggle(getPicks, setGetPicks, k)} />
+                ))}
                 <Field label="NOTE (OPTIONAL)" value={note} onChangeText={setNote} placeholder="Your pitch" />
                 <Button
-                  label={`SEND OFFER · ${give.length} FOR ${get.length}`}
+                  label={`SEND OFFER · ${give.length + givePicks.length} FOR ${get.length + getPicks.length}`}
                   busy={busy === 'send'}
-                  disabled={!give.length && !get.length}
+                  disabled={!total}
                   onPress={() =>
                     run('send', async () => {
-                      await proposeTrade(b.league.id, partner, give, get, note);
+                      await proposeTrade(b.league.id, partner, give, get, note, givePicks, getPicks);
                       setGive([]);
                       setGet([]);
+                      setGivePicks([]);
+                      setGetPicks([]);
                       setNote('');
                       setPartner(null);
                     })
@@ -191,7 +218,7 @@ export default function Trades() {
                 <Button
                   label="CHECK IT WITH COACHES CORNER"
                   kind="ghost"
-                  disabled={!give.length && !get.length}
+                  disabled={!total}
                   onPress={() =>
                     router.push({
                       pathname: '/coach/[provider]/[id]/[team]',
@@ -199,7 +226,7 @@ export default function Trades() {
                         provider: 'bit128',
                         id: b.league.id,
                         team: me,
-                        q: `Grade this trade with ${teamName(partner)}: I give ${give.map(pname).join(', ') || 'nothing'} and get ${get.map(pname).join(', ') || 'nothing'}.`,
+                        q: `Grade this trade with ${teamName(partner)}: I give ${[...give.map(pname), ...givePicks.map(plabel)].join(', ') || 'nothing'} and get ${[...get.map(pname), ...getPicks.map(plabel)].join(', ') || 'nothing'}.`,
                       },
                     })
                   }
@@ -227,10 +254,11 @@ export default function Trades() {
 }
 
 function TradeSides({ t, pname, teamName }: { t: Trade; pname: (p: string) => string; teamName: (t: string) => string }) {
+  const side = (players: string[], picks: string[]) => [...players.map(pname), ...picks.map((k) => pickLabel(k, teamName))].join(', ') || 'nothing';
   return (
     <View style={{ gap: 4 }}>
-      <Text style={st.line}>{`${teamName(t.fromTeam)} gives: ${t.give.map(pname).join(', ') || 'nothing'}`}</Text>
-      <Text style={st.line}>{`${teamName(t.toTeam)} gives: ${t.get.map(pname).join(', ') || 'nothing'}`}</Text>
+      <Text style={st.line}>{`${teamName(t.fromTeam)} gives: ${side(t.give, t.givePicks)}`}</Text>
+      <Text style={st.line}>{`${teamName(t.toTeam)} gives: ${side(t.get, t.getPicks)}`}</Text>
     </View>
   );
 }

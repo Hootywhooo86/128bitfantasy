@@ -3,6 +3,7 @@
  * offers, and the checks a league must pass before it's created or changed.
  */
 import { CATEGORIES, DEFAULT_CATEGORIES } from './categories';
+import { nhlSeasonFor } from './nhl';
 import { DEFAULT_SCORING, type HostedSport } from './scoring';
 import { playoffRounds } from './standings';
 import { DEFAULT_BENCH, DEFAULT_SLOTS, isH2H, usesCategories, type LeagueSettings } from './types';
@@ -157,4 +158,27 @@ export function settingsSummary(sport: HostedSport, s: LeagueSettings): string {
     .map(([k, n]) => (n > 1 ? `${n} ${k}` : k))
     .join(' · ');
   return `${slots} · ${s.bench} BN${s.ir ? ` · ${s.ir} IR` : ''}`;
+}
+
+/**
+ * The season a new league plays. Hockey numbers it 20262027; basketball by
+ * the year it tips off (Sleeper's way); football by its kickoff year;
+ * baseball's next season once this one is over (from October).
+ */
+export function seasonFor(sport: HostedSport, now = new Date()): string {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  if (sport === 'nhl') return nhlSeasonFor(now);
+  if (sport === 'nba') return String(m >= 6 ? y : y - 1);
+  if (sport === 'mlb') return String(m >= 9 ? y + 1 : y);
+  return String(m < 2 ? y - 1 : y);
+}
+
+/** The season after this one: 20262027 → 20272028, 2026 → 2027. */
+export function nextSeason(season: string): string {
+  if (/^\d{8}$/.test(season)) {
+    const a = Number(season.slice(0, 4)) + 1;
+    return `${a}${a + 1}`;
+  }
+  return String(Number(season) + 1);
 }

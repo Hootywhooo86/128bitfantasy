@@ -38,6 +38,12 @@ export function parsePick(key: string): { season: string; round: number; origina
   return season && originalTeam && Number.isInteger(r) ? { season, round: r, originalTeam } : null;
 }
 
+/** "2027:1:<team>" → "2027 round 1 (Team A's)". */
+export function pickLabel(key: string, teamName: (t: string) => string): string {
+  const p = parsePick(key);
+  return p ? `${p.season} round ${p.round} (${teamName(p.originalTeam)}'s)` : key;
+}
+
 /** Pick owners after trades, keyed by pickKey. Missing = still the original team's. */
 export type PickOwners = Map<string, string>;
 

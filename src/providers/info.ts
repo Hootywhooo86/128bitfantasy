@@ -36,7 +36,7 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     official: true,
     connectWith: 'Your league\'s Supabase project',
     accessNote:
-      'Leagues hosted by this app in your own free Supabase project. Draft, lineups and pickups happen right here; scores come from the NHL and Sleeper stat feeds.',
+      'Leagues hosted by this app in your own free Supabase project. Draft, lineups and pickups happen right here; scores come from the NHL, MLB and Sleeper stat feeds.',
     steps: [
       'Commissioner: make a free project at supabase.com, open SQL Editor, paste supabase/schema.sql from this app\'s GitHub, Run.',
       'Authentication → Sign In / Providers → turn on "Allow anonymous sign-ins" (quick sign-in).',

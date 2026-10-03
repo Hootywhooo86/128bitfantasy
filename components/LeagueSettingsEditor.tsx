@@ -34,6 +34,7 @@ export function LeagueSettingsEditor({
   const shape = !locked && !readOnly;
   const any = !readOnly;
   const h2h = isH2H(s.format);
+  const rosterSpots = Object.values(s.slots).reduce((a, b) => a + b, 0) + s.bench;
 
   return (
     <>
@@ -131,20 +132,37 @@ export function LeagueSettingsEditor({
             )}
           </>
         ) : null}
-        <Text style={st.lbl}>DRAFT ORDER</Text>
+        <Text style={st.lbl}>DRAFT TYPE</Text>
         {shape ? (
           <Chips
             items={[
               { id: 'snake', label: 'SNAKE' },
               { id: 'linear', label: 'SAME EVERY ROUND' },
+              { id: 'auction', label: 'AUCTION' },
             ]}
             value={s.draftType}
             onChange={(v) => set({ draftType: v })}
           />
         ) : (
-          <Text style={st.val}>{s.draftType === 'snake' ? 'Snake' : 'Same every round'}</Text>
+          <Text style={st.val}>{DRAFT_LABEL[s.draftType]}</Text>
         )}
-        <Text style={st.lbl}>PICK CLOCK</Text>
+        <Text style={st.note}>
+          {s.draftType === 'auction'
+            ? 'Teams take turns putting players up; everyone bids from a budget. Every bid restarts the clock.'
+            : s.draftType === 'snake'
+              ? 'Order reverses every round. Picks can be traded.'
+              : 'Same order every round. Picks can be traded.'}
+        </Text>
+        {s.draftType === 'auction' ? (
+          <>
+            <View style={st.srow}>
+              <Text style={st.slabel}>Auction budget ($)</Text>
+              <NumberBox value={s.auctionBudget} editable={shape} onChange={(n) => set({ auctionBudget: Math.round(n) })} />
+            </View>
+            <Stepper label="BID CLOCK (SECONDS)" value={s.bidSeconds} min={5} max={120} step={5} onChange={any ? (n) => set({ bidSeconds: n }) : undefined} />
+          </>
+        ) : null}
+        <Text style={st.lbl}>{s.draftType === 'auction' ? 'NOMINATION CLOCK' : 'PICK CLOCK'}</Text>
         {any ? (
           <Chips
             items={PICK_CLOCKS.map((n) => ({ id: String(n), label: n < 60 ? `${n}S` : `${n / 60}M` }))}
@@ -155,6 +173,80 @@ export function LeagueSettingsEditor({
           <Text style={st.val}>{`${s.pickSeconds}s`}</Text>
         )}
       </Card>
+
+      <Card>
+        <CardHead title="KEEPERS & DYNASTY" note={s.keepers === 0 ? 'redraft' : s.keepers >= rosterSpots ? 'dynasty' : `${s.keepers} keeper${s.keepers === 1 ? '' : 's'}`} />
+        {any ? (
+          <Chips
+            items={[
+              { id: 'redraft', label: 'REDRAFT' },
+              { id: 'keeper', label: 'KEEPERS' },
+              { id: 'dynasty', label: 'DYNASTY' },
+            ]}
+            value={s.keepers === 0 ? 'redraft' : s.keepers >= rosterSpots ? 'dynasty' : 'keeper'}
+            onChange={(v) =>
+              set(
+                v === 'redraft'
+                  ? { keepers: 0, draftRounds: null }
+                  : v === 'dynasty'
+                    ? { keepers: rosterSpots, draftRounds: s.draftRounds ?? 3 }
+                    : { keepers: Math.min(3, rosterSpots - 1), draftRounds: null }
+              )
+            }
+          />
+        ) : null}
+        <Text style={st.note}>
+          {s.keepers === 0
+            ? 'Everyone starts fresh each season.'
+            : s.keepers >= rosterSpots
+              ? 'Teams keep their whole roster year to year; each new season has a short draft for new players.'
+              : 'At the end of the season, each team keeps some players into next season; the draft is shorter by that many rounds.'}
+        </Text>
+        {s.keepers > 0 && s.keepers < rosterSpots ? (
+          <Stepper label="KEEPERS PER TEAM" value={s.keepers} min={1} max={rosterSpots - 1} onChange={any ? (n) => set({ keepers: n }) : undefined} />
+        ) : null}
+        {s.keepers > 0 ? (
+          <Stepper
+            label="DRAFT ROUNDS AFTER YEAR ONE"
+            hint={s.draftRounds == null ? 'Auto: roster minus keepers' : undefined}
+            value={s.draftRounds ?? Math.max(1, rosterSpots - s.keepers)}
+            min={1}
+            max={rosterSpots}
+            onChange={any ? (n) => set({ draftRounds: n }) : undefined}
+          />
+        ) : null}
+      </Card>
+
+      {h2h ? (
+        <Card>
+          <CardHead title="DIVISIONS" note={s.divisions.length ? `${s.divisions.length}` : 'none'} />
+          {any ? (
+            <Chips
+              items={[0, 2, 3, 4].map((n) => ({ id: String(n), label: n ? String(n) : 'NONE' }))}
+              value={String(s.divisions.length)}
+              onChange={(v) => {
+                const n = Number(v);
+                const names = Array.from({ length: n }, (_, i) => s.divisions[i] ?? DIVISION_NAMES[i]);
+                set({ divisions: names });
+              }}
+            />
+          ) : null}
+          {s.divisions.map((d, i) => (
+            <View key={i} style={st.srow}>
+              <Text style={st.slabel}>{`Division ${i + 1}`}</Text>
+              <TextInput
+                editable={any}
+                style={[st.box, { width: 150, textAlign: 'left' }]}
+                value={d}
+                onChangeText={(v) => set({ divisions: s.divisions.map((x, j) => (j === i ? v : x)) })}
+              />
+            </View>
+          ))}
+          {s.divisions.length ? (
+            <Text style={st.note}>Division winners get the top playoff seeds. The commissioner puts teams in divisions from Commissioner Tools.</Text>
+          ) : null}
+        </Card>
+      ) : null}
 
       <Card>
         <CardHead title="WAIVERS & PICKUPS" />
@@ -249,6 +341,9 @@ export function LeagueSettingsEditor({
     </>
   );
 }
+
+const DRAFT_LABEL = { snake: 'Snake', linear: 'Same every round', auction: 'Auction' } as const;
+const DIVISION_NAMES = ['North', 'South', 'East', 'West'];
 
 function Stepper({
   label,

@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, CardHead, Empty, Note, Screen } from '@/components/ui';
 import { poolMap } from '@/lib/leagues/adapter';
-import { leagueBundle, setLineup, type LeagueBundle } from '@/lib/leagues/data';
+import { commishLineup, leagueBundle, setLineup, type LeagueBundle } from '@/lib/leagues/data';
 import { colors, fonts, themedStyles } from '@/lib/theme';
 import { slotTakes } from '@/src/leagues/draft';
 import type { PoolPlayer } from '@/src/leagues/types';
@@ -16,7 +16,8 @@ import { fetchSnapshot, cachedLeagues } from '@/src/sports/hub';
  * began does nothing for that game.
  */
 export default function Lineup() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `team` is set when the commissioner is fixing someone else's lineup.
+  const { id, team } = useLocalSearchParams<{ id: string; team?: string }>();
   const [b, setB] = useState<LeagueBundle | null>(null);
   const [pool, setPool] = useState<Map<string, PoolPlayer> | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
@@ -42,7 +43,10 @@ export default function Lineup() {
   }
 
   const s = b.league.settings;
-  const mine = b.roster.filter((r) => r.teamId === b.myTeamId);
+  const teamId = team ?? b.myTeamId;
+  const forOther = !!team && team !== b.myTeamId;
+  const mine = b.roster.filter((r) => r.teamId === teamId);
+  const sport = b.league.sport;
   const name = (pid: string) => pool?.get(pid)?.name ?? pid;
   const slotOrder = [...Object.keys(s.slots), 'BN', 'IR'];
   const inSlot = (slot: string) => mine.filter((r) => r.slot === slot);
@@ -59,11 +63,12 @@ export default function Lineup() {
       if (there.length >= cap && there[0]) {
         // Swap: the one already there takes the picked player's old slot if he fits it.
         const out = there[0];
-        moves.push({ player: out.playerId, slot: slotTakes(sel.slot, out.position) ? sel.slot : 'BN' });
+        moves.push({ player: out.playerId, slot: slotTakes(sel.slot, out.position, sport) ? sel.slot : 'BN' });
       }
       moves.push({ player: sel.playerId, slot });
       // One call, checked together, so a swap between two full spots works.
-      await setLineup(b.league.id, moves);
+      if (forOther && teamId) await commishLineup(b.league.id, teamId, moves);
+      else await setLineup(b.league.id, moves);
       setB(await leagueBundle(b.league.id));
       setPicked(null);
       // Refresh the team screen's copy so it shows the new lineup.
@@ -77,14 +82,14 @@ export default function Lineup() {
   }
 
   return (
-    <Screen section="Set Lineup" back>
+    <Screen section={forOther ? `Lineup · ${b.teams.find((t) => t.id === teamId)?.name ?? ''}` : 'Set Lineup'} back>
       <Note>Tap a player, then tap where he goes. A game counts if he was in a starting spot when it began. IR spots are extra room — put injured players there to free a roster spot.</Note>
       {error ? <Note tone="error">{error}</Note> : null}
       {slotOrder.map((slot) => {
         const here = inSlot(slot);
         const cap = slot === 'BN' ? null : slot === 'IR' ? s.ir : s.slots[slot];
         if (slot === 'IR' && !s.ir && !here.length) return null;
-        const canTake = !!sel && sel.slot !== slot && (slot === 'BN' || slot === 'IR' || slotTakes(slot, sel.position));
+        const canTake = !!sel && sel.slot !== slot && (slot === 'BN' || slot === 'IR' || slotTakes(slot, sel.position, sport));
         return (
           <Card key={slot} style={canTake ? { borderColor: colors.accent } : undefined}>
             <CardHead title={slot === 'BN' ? 'BENCH' : slot} note={cap != null ? `${here.length}/${cap}` : `${here.length}`} />
