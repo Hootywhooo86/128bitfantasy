@@ -126,3 +126,29 @@ describe('player news, projections and lists', () => {
     expect(typeof r?.stats?.pts_half_ppr).toBe('number');
   }, 90_000);
 });
+
+describe('betting odds (ESPN, free)', () => {
+  it('scoreboard games carry DraftKings lines with direct bet links', async () => {
+    const { parseScoreboard, hasOdds } = await import('@/src/betting/odds');
+    const games = parseScoreboard(await getJson('espn', 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard'));
+    expect(games.length).toBeGreaterThan(0);
+    const priced = games.filter(hasOdds);
+    // Off-season and the hours after the last game can have none; only check shape when present.
+    for (const g of priced) {
+      expect(g.home.teamId).toBeTruthy();
+      const link = g.moneyline?.home.link ?? g.spread?.home.link;
+      if (link) expect(link).toMatch(/^https:\/\/sportsbook\.draftkings\.com\//);
+    }
+  }, 60_000);
+
+  it('player lines load for a game with odds', async () => {
+    const { corePath, parseProps, parseScoreboard, hasOdds } = await import('@/src/betting/odds');
+    const games = parseScoreboard(await getJson('espn', 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard'));
+    const g = games.find((x) => hasOdds(x) && x.status === 'STATUS_SCHEDULED');
+    if (!g) return; // nothing upcoming right now
+    const base = `https://sports.core.api.espn.com/v2/sports/${corePath('nfl')}/events/${g.eventId}/competitions/${g.eventId}/odds`;
+    const list = await getJson<{ items: { provider: { id: string } }[] }>('espn', `${base}?lang=en&region=us`);
+    const props = parseProps(await getJson('espn', `${base}/${list.items[0].provider.id}/propBets?lang=en&region=us&limit=1000`, { timeoutMs: 60_000 }));
+    expect(props.size).toBeGreaterThan(0);
+  }, 120_000);
+});

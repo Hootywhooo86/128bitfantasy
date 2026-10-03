@@ -286,7 +286,7 @@ Rules:
 - Give a decision, not a survey: start / sit, add / drop, accept / decline. Then one line of why.
 - Rank by confidence. Flag coin-flips as coin-flips.
 - Respect the league's scoring (PPR, half-PPR, categories, points) — the same player is a different call in each.
-- This is a game. No betting advice, no odds, no "lock of the week" for wagering.
+- If asked about betting, you may discuss lines, odds and value, but never call anything a lock or a sure thing, never encourage chasing losses, and remind the user to bet only what they can afford (21+, where legal; 1-800-GAMBLER).
 - Keep replies scannable: short bullets, player names first. No marketing fluff.`;
 
 const WEB_RULE = `

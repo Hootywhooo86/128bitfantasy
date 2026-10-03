@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
-import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button, Card, CardHead, Field, Label, MenuRow, Note, Screen } from '@/components/ui';
 import { getProviderMeta } from '@/lib/ai/ai-coach';
 import { getAiSettings, type AiSettings } from '@/lib/ai/settings';
@@ -9,6 +9,7 @@ import { ACCENTS, accentName, normalizeHex, tooDark, useAccent } from '@/lib/acc
 import { alertsEnabled, alertsSupported, disableAlerts, enableAlerts } from '@/lib/alerts';
 import { setBackgroundRefresh } from '@/lib/background';
 import { describeNetworkFailure } from '@/lib/net-errors';
+import { RESPONSIBLE_GAMING, setOddsEnabled, useOddsEnabled } from '@/lib/odds';
 import { useFeed } from '@/lib/storage/feed';
 import { getConnections } from '@/lib/storage/connections';
 import { canCheckApis, lastHealth, runHealthCheck } from '@/lib/storage/health';
@@ -40,6 +41,7 @@ export default function Settings() {
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const feed = useFeed();
+  const oddsOn = useOddsEnabled();
 
   const load = useCallback(() => {
     getConnections().then(setConns);
@@ -81,6 +83,18 @@ export default function Settings() {
     }
     await setBackgroundRefresh(on).catch(() => undefined);
     setAlertsOn(on);
+  }
+
+  function toggleOdds(on: boolean) {
+    if (!on) return setOddsEnabled(false, false);
+    Alert.alert(
+      'Are you 21 or older?',
+      'Betting odds and sportsbook links are for adults where sports betting is legal. This app never places bets — links open the sportsbook, which runs its own age and location checks.',
+      [
+        { text: 'No', style: 'cancel' },
+        { text: "Yes, I'm 21+", onPress: () => setOddsEnabled(true, true) },
+      ]
+    );
   }
 
   async function copyFeed() {
@@ -187,6 +201,23 @@ export default function Settings() {
           />
         </View>
         {alertMsg ? <Note tone="error">{alertMsg}</Note> : null}
+      </Card>
+
+      <Label>BETTING ODDS</Label>
+      <Card>
+        <View style={st.switchRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={st.switchT}>Show odds (21+)</Text>
+            <Text style={st.body}>
+              Free DraftKings lines from ESPN on each player: his team&apos;s spread, total and moneyline, his own over/under lines,
+              and links that open the bet in the sportsbook. Read-only — this app never places bets.
+            </Text>
+          </View>
+          <Switch value={oddsOn} onValueChange={toggleOdds} trackColor={{ true: colors.accent, false: colors.track }} thumbColor={colors.text} />
+        </View>
+        <Pressable onPress={() => Linking.openURL(RESPONSIBLE_GAMING.url).catch(() => undefined)}>
+          <Text style={[st.body, { textDecorationLine: 'underline', marginTop: 8 }]}>{RESPONSIBLE_GAMING.line}</Text>
+        </Pressable>
       </Card>
 
       <Label>128BIT FEED</Label>

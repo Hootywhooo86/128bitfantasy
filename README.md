@@ -41,6 +41,13 @@ Settings holds:
 
 Read-only everywhere. The app never changes a lineup or makes a move, even where a provider's API could.
 
+**Betting odds (off by default, 21+).** Settings → Betting odds. On a player: his
+team's game lines (spread, total, moneyline, with what a $10 win pays), his own
+over/under lines with where they opened, and links that open the bet in
+DraftKings. Source: ESPN's free feeds (DraftKings lines), no key. Player-line
+*prices* aren't in the free feed. The app never places bets; responsible-gaming
+text (1-800-GAMBLER) sits with every odds card.
+
 ## 128bit feed events
 
 `src/sports/events.ts` compares each refresh of a league with the last one and

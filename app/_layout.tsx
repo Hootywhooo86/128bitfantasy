@@ -9,6 +9,7 @@ import { View } from 'react-native';
 import '@/lib/background';
 import { onAlertTap, startAlerts } from '@/lib/alerts';
 import { healthCheckIfDue } from '@/lib/storage/health';
+import { loadOddsSetting } from '@/lib/odds';
 import { loadPrefs, restoreAccent } from '@/lib/storage/prefs';
 import { colors } from '@/lib/theme';
 
@@ -36,7 +37,7 @@ export default function RootLayout() {
     [router]
   );
   useEffect(() => {
-    Promise.all([restoreAccent(), loadPrefs()])
+    Promise.all([restoreAccent(), loadPrefs(), loadOddsSetting()])
       .catch(() => undefined)
       .finally(() => setPrefsReady(true));
     // The API watch, at most once a day, in the background.

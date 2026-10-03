@@ -2,7 +2,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { Button, Card, CardHead, Empty, Label, Note, Screen } from '@/components/ui';
+import { OddsCard } from '@/components/OddsCard';
 import { playerNews, useInsights } from '@/lib/insights';
+import { useOddsEnabled } from '@/lib/odds';
 import { describeNetworkFailure } from '@/lib/net-errors';
 import { usePrefs } from '@/lib/storage/prefs';
 import { colors, fonts, themedStyles } from '@/lib/theme';
@@ -21,6 +23,7 @@ export default function PlayerScreen() {
   const { provider, id, playerId, team } = useLocalSearchParams<{ provider: ProviderId; id: string; playerId: string; team?: string }>();
   const router = useRouter();
   const prefs = usePrefs();
+  const oddsOn = useOddsEnabled();
   const [raw, setRaw] = useState<LeagueSnapshot | null>(null);
   const [news, setNews] = useState<NewsItem[] | null>(null);
   const [newsError, setNewsError] = useState<string | null>(null);
@@ -97,6 +100,14 @@ export default function PlayerScreen() {
         </Card>
       ) : null}
 
+      {oddsOn ? (
+        <OddsCard player={player} sport={snap.league.sport} espnId={espnId} />
+      ) : (
+        <Text style={st.oddsOff} onPress={() => router.push('/settings')}>
+          Betting odds are off — turn them on in Settings (21+).
+        </Text>
+      )}
+
       <Label>LATEST NEWS</Label>
       {!espnId ? (
         <Note>We couldn&apos;t match him to a news feed (another player shares his name, or he&apos;s not in ESPN&apos;s list).</Note>
@@ -150,5 +161,6 @@ const st = themedStyles(() =>
     newsAge: { fontFamily: fonts.pixel, fontSize: 7.5, color: colors.textDim, letterSpacing: 0.8 },
     headline: { fontSize: 14.5, color: colors.text, fontFamily: fonts.bodySemi, lineHeight: 21 },
     story: { fontSize: 13.5, color: colors.textMuted, fontFamily: fonts.body, lineHeight: 20, marginTop: 8 },
+    oddsOff: { fontSize: 12, color: colors.textDim, fontFamily: fonts.body, marginBottom: 6, textDecorationLine: 'underline' },
   })
 );
