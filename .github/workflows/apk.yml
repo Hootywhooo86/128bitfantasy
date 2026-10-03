@@ -4,6 +4,10 @@ name: APK
 # builds one and attaches it to a GitHub Release, so the download is a plain
 # link that works in a phone browser with no login and no zip to unpack.
 on:
+  # Pushing a version tag builds and releases it. Unlike workflow_dispatch,
+  # this works before the workflow file has reached the default branch.
+  push:
+    tags: ['v*']
   workflow_dispatch:
     inputs:
       tag:
@@ -21,7 +25,9 @@ jobs:
     # Inlined into the JS bundle, so the installed app knows which release it
     # is and Settings → CHECK FOR APP UPDATE can compare it with the newest one.
     env:
-      EXPO_PUBLIC_RELEASE_TAG: ${{ inputs.tag }}
+      # The typed-in tag on a manual run, the pushed tag otherwise.
+      TAG: ${{ inputs.tag || github.ref_name }}
+      EXPO_PUBLIC_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -60,7 +66,7 @@ jobs:
         run: |
           set -euo pipefail
           src=android/app/build/outputs/apk/release/app-release.apk
-          out="128bitfantasy-${{ inputs.tag }}.apk"
+          out="128bitfantasy-${TAG}.apk"
           cp "$src" "$out"
           echo "path=$out" >> "$GITHUB_OUTPUT"
           echo "size=$(du -h "$out" | cut -f1)" >> "$GITHUB_OUTPUT"
@@ -73,8 +79,10 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag }}
-          name: ${{ inputs.tag }}
+          tag_name: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+          # Anything with a dash (v0.1.0-alpha.1) is a test build.
+          prerelease: ${{ contains(env.TAG, '-') }}
           files: ${{ steps.apk.outputs.path }}
           body: |
             Android APK, ${{ steps.apk.outputs.size }}, built from `${{ github.sha }}`.
