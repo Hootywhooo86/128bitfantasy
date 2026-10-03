@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { buildLeagueContext, cornerPrompt } from './coach-context';
-import type { LeagueSnapshot } from './models';
+import { buildLeagueContext, cornerQuestion } from './coach-context';
+import { snapshotProblems, type LeagueSnapshot } from './models';
 
 const snap: LeagueSnapshot = {
-  league: { provider: 'sleeper', id: '1', name: 'Pixel Bowl', sport: 'nfl', season: '2026', teamCount: 2, myTeamId: 'a', scoring: 'PPR' },
+  league: { provider: 'sleeper', id: '1', name: 'Pixel Bowl', sport: 'nfl', season: '2026', teamCount: 3, myTeamId: 'a', scoring: 'PPR' },
   teams: [
     { id: 'a', name: 'Mine', owner: 'me', record: { wins: 3, losses: 1, ties: 0 }, pointsFor: 500, pointsAgainst: 400, rank: 1 },
     { id: 'b', name: 'Theirs', owner: 'them', record: { wins: 1, losses: 3, ties: 0 }, pointsFor: null, pointsAgainst: null, rank: 2 },
+    { id: 'c', name: 'Third', owner: 'x', record: { wins: 2, losses: 2, ties: 0 }, pointsFor: 410, pointsAgainst: 420, rank: 3 },
   ],
   rosters: [
     {
@@ -17,8 +18,12 @@ const snap: LeagueSnapshot = {
       ],
     },
     { teamId: 'b', players: [] },
+    { teamId: 'c', players: [{ id: '9', name: 'Their RB', position: 'RB', lineupSlot: 'RB', slot: 'starter', proTeam: 'DET', injury: null }] },
   ],
-  matchups: [{ period: 4, home: { teamId: 'b', points: null }, away: { teamId: 'a', points: 12.3 } }],
+  matchups: [
+    { period: 4, home: { teamId: 'b', points: null }, away: { teamId: 'a', points: 12.3 } },
+    { period: 4, home: { teamId: 'c', points: 5 }, away: null },
+  ],
   period: 4,
   fetchedAt: Date.UTC(2026, 9, 3),
 };
@@ -48,11 +53,40 @@ describe('coaches corner context', () => {
     expect(c).not.toContain('My roster');
   });
 
-  it('turns modes into a decision request with the context attached', () => {
-    const p = cornerPrompt('lineup', ctx, 'Is it windy in Buffalo?');
-    expect(p).toMatch(/START or SIT/);
-    expect(p).toContain('Also: Is it windy in Buffalo?');
-    expect(p).toContain('--- League context ---');
-    expect(cornerPrompt('ask', ctx, '')).toContain('one move');
+  it('scouts another team, and brings my roster along for trade ideas', () => {
+    const c = buildLeagueContext(snap, 'c');
+    expect(c).toContain("Team being viewed: Third");
+    expect(c).toContain("NOT the user's team");
+    expect(c).toContain('This week: bye');
+    expect(c).toContain('Viewed team roster:');
+    expect(c).toContain('Their RB');
+    expect(c).toContain('My roster (for trade ideas):');
+  });
+
+  it('does not repeat my roster when scouting my own opponent', () => {
+    const c = buildLeagueContext(snap, 'b');
+    expect(c).not.toContain('for trade ideas');
+    expect(c).toContain('Opponent roster:');
+  });
+
+  it('turns plays into questions, different when scouting', () => {
+    expect(cornerQuestion('lineup', 'Is it windy in Buffalo?')).toMatch(/START or SIT[\s\S]*Also: Is it windy/);
+    expect(cornerQuestion('lineup', '', true)).toMatch(/exploit/);
+    expect(cornerQuestion('ask', '')).toContain('one move');
+    expect(cornerQuestion('ask', 'Trade Kelce?')).toBe('Trade Kelce?');
+  });
+});
+
+describe('snapshot problems', () => {
+  it('flags the signs of an API change', () => {
+    expect(snapshotProblems(snap)).toEqual([]);
+    expect(snapshotProblems({ ...snap, teams: [] })).toEqual(['no teams came back']);
+    expect(snapshotProblems({ ...snap, rosters: [{ teamId: 'a', players: [] }] })).toEqual(['every roster came back empty']);
+    expect(
+      snapshotProblems({
+        ...snap,
+        rosters: [{ teamId: 'a', players: [{ id: '7', name: '7', position: null, lineupSlot: null, slot: 'bench', proTeam: null, injury: null }] }],
+      })
+    ).toEqual(['player names are missing']);
   });
 });

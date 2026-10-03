@@ -95,13 +95,29 @@ export function formatRecord(r: Record3 | null): string {
   return r.ties > 0 ? `${r.wins}-${r.losses}-${r.ties}` : `${r.wins}-${r.losses}`;
 }
 
+/** A team's matchup this period, if the game is known. */
+export function matchupFor(s: LeagueSnapshot, teamId: string | null): Matchup | null {
+  if (!teamId) return null;
+  return s.matchups.find((m) => m.home.teamId === teamId || m.away?.teamId === teamId) ?? null;
+}
+
 /** The connected user's matchup this period, if both the team and the game are known. */
 export function myMatchup(s: LeagueSnapshot): Matchup | null {
-  const me = s.league.myTeamId;
-  if (!me) return null;
-  return (
-    s.matchups.find((m) => m.home.teamId === me || m.away?.teamId === me) ?? null
-  );
+  return matchupFor(s, s.league.myTeamId);
+}
+
+/**
+ * Signs a provider changed its API under us: data came back but the parts we
+ * read are empty. Shown as a note so blank screens are never a mystery.
+ */
+export function snapshotProblems(s: LeagueSnapshot): string[] {
+  const out: string[] = [];
+  if (s.teams.length === 0) out.push('no teams came back');
+  else if (s.rosters.length > 0 && s.rosters.every((r) => r.players.length === 0)) out.push('every roster came back empty');
+  else if (s.rosters.some((r) => r.players.length > 0 && r.players.every((p) => p.name === p.id))) {
+    out.push('player names are missing');
+  }
+  return out;
 }
 
 /** Orders a matchup so the user's side comes first. */

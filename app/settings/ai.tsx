@@ -15,7 +15,7 @@ const SHORT: Record<AiProviderId, string> = {
 };
 
 /** Settings → AI. The same providers, defaults and BYO-key rules as 128BIT FIT. */
-export default function Settings() {
+export default function AiSettingsScreen() {
   const [provider, setProvider] = useState<AiProviderId>('anthropic');
   const [model, setModel] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
@@ -71,8 +71,8 @@ export default function Settings() {
   }
 
   return (
-    <Screen section="Settings" back right="none">
-      <Label>AI · COACHES CORNER</Label>
+    <Screen section="Coaches Corner AI" back right="none">
+      <Label>SAME AI CHOICES AS 128BIT FIT</Label>
       <Card>
         <CardHead title="PROVIDER" note={hasKey ? 'Key saved' : 'No key'} />
         <Chips items={AI_PROVIDERS.map((p) => ({ id: p.id, label: SHORT[p.id] }))} value={provider} onChange={pickProvider} />
@@ -99,11 +99,6 @@ export default function Settings() {
         {hasKey ? <Button label="REMOVE KEY" kind="danger" onPress={clearKey} /> : null}
       </Card>
 
-      <Label>ABOUT</Label>
-      <Note>
-        128BIT FANTASY is part of the 128bit family. Read-only: it never changes a lineup or makes a move. Advice only — for
-        the game, not for betting.
-      </Note>
     </Screen>
   );
 }

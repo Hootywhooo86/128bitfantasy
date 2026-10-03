@@ -1,0 +1,21 @@
+name: API watch
+
+# Fantasy providers change their APIs without notice (ESPN moved hosts, Yahoo
+# moved to OAuth 2.0, Fantrax rotates internals). This hits each one daily and
+# goes red when a response stops matching what the app reads.
+on:
+  schedule:
+    - cron: '17 13 * * *'
+  workflow_dispatch:
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:live

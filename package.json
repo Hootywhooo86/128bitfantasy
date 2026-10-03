@@ -15,7 +15,8 @@
     "lint": "expo lint",
     "build:logo": "node scripts/build-logo.mjs",
     "build:web": "expo export -p web",
-    "serve:web": "node scripts/serve-web.mjs"
+    "serve:web": "node scripts/serve-web.mjs",
+    "test:live": "vitest run --config vitest.live.config.mts"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",

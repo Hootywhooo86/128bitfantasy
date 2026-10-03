@@ -1,33 +1,85 @@
 /**
- * Coaches Corner: one tap, the coach reads the internet and makes the call.
+ * Coaches Corner: a coach for one team in one league.
+ *
+ * Opened from a team, it sees that team's roster, matchup and league — fresh
+ * each time you ask — and keeps the conversation, so follow-ups ("what about
+ * the TE?") work.
  *
  * Always asks for web search — a start/sit call from a model's memory is a
  * call made on last season's depth chart. Where the chosen AI cannot search,
  * the answer still comes back, and the result says plainly that nothing was
  * looked up.
  */
-import { buildLeagueContext, cornerPrompt, type CornerMode } from '@/src/sports/coach-context';
+import { getJsonItem, setJsonItem } from '@/lib/storage/kv';
+import { buildLeagueContext, cornerQuestion, type CornerMode } from '@/src/sports/coach-context';
 import type { LeagueSnapshot } from '@/src/sports/models';
-import { AiCoachError, buildSystemPrompt, coachChat, providerCanSearchWeb, type WebSearchOutcome } from './ai-coach';
+import { leagueKey } from '@/src/sports/prefs';
+import {
+  AiCoachError,
+  buildSystemPrompt,
+  coachChat,
+  providerCanSearchWeb,
+  type ChatMessage,
+  type WebSearchOutcome,
+  type WebSource,
+} from './ai-coach';
 import { getAiRuntime } from './settings';
 
-export type CornerReply = {
+export type ThreadMessage = {
+  role: 'user' | 'assistant';
   content: string;
-  web: WebSearchOutcome;
-  model: string;
+  at: number;
+  /** Assistant only. */
+  web?: WebSearchOutcome;
+  model?: string;
 };
 
-export async function askCoachesCorner(
+/** Enough history for follow-ups without paying for a novel every call. */
+const KEEP = 24;
+const SEND = 8;
+
+const threadKey = (s: LeagueSnapshot, teamId: string) => `coach_thread_v1_${leagueKey(s.league)}_${teamId}`;
+
+export async function loadThread(s: LeagueSnapshot, teamId: string): Promise<ThreadMessage[]> {
+  return (await getJsonItem<ThreadMessage[]>(threadKey(s, teamId))) ?? [];
+}
+
+export async function clearThread(s: LeagueSnapshot, teamId: string): Promise<void> {
+  await setJsonItem(threadKey(s, teamId), []);
+}
+
+/** The messages sent to the model: context in the system prompt, then recent turns. */
+export function buildMessages(
   snapshot: LeagueSnapshot,
+  teamId: string,
+  history: ThreadMessage[],
+  question: string,
+  canSearch: boolean
+): ChatMessage[] {
+  const system = `${buildSystemPrompt(canSearch)}\n\n--- League context (live from the provider) ---\n${buildLeagueContext(snapshot, teamId)}`;
+  return [
+    { role: 'system', content: system },
+    ...history.slice(-SEND).map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: question },
+  ];
+}
+
+export async function askCoach(
+  snapshot: LeagueSnapshot,
+  teamId: string,
   mode: CornerMode,
-  question?: string,
+  question: string | undefined,
   signal?: AbortSignal
-): Promise<CornerReply> {
+): Promise<ThreadMessage[]> {
   const cfg = await getAiRuntime();
   if (!cfg.apiKey) {
-    throw new AiCoachError('Coaches Corner needs an AI key. Add one in Settings → AI — the same kind 128BIT FIT uses.', 401);
+    throw new AiCoachError('Coaches Corner needs an AI key. Add one in Settings → Coaches Corner AI — the same kind 128BIT FIT uses.', 401);
   }
+  const history = await loadThread(snapshot, teamId);
+  const scouting = teamId !== snapshot.league.myTeamId;
+  const text = cornerQuestion(mode, question, scouting);
   const canSearch = providerCanSearchWeb(cfg.provider, cfg.model);
+
   const res = await coachChat({
     provider: cfg.provider,
     apiKey: cfg.apiKey,
@@ -36,17 +88,26 @@ export async function askCoachesCorner(
     signal,
     webSearch: true,
     forceSearch: true,
-    messages: [
-      { role: 'system', content: buildSystemPrompt(canSearch) },
-      { role: 'user', content: cornerPrompt(mode, buildLeagueContext(snapshot), question) },
-    ],
+    messages: buildMessages(snapshot, teamId, history, text, canSearch),
   });
-  return { content: res.content, web: res.web, model: res.model };
+
+  const now = Date.now();
+  const next: ThreadMessage[] = [
+    ...history,
+    { role: 'user' as const, content: text, at: now },
+    { role: 'assistant' as const, content: res.content, at: now, web: res.web, model: res.model },
+  ].slice(-KEEP);
+  await setJsonItem(threadKey(snapshot, teamId), next);
+  return next;
+}
+
+export function sourcesOf(m: ThreadMessage): WebSource[] {
+  return m.web?.status === 'on' ? m.web.sources : [];
 }
 
 /** One honest line about whether the coach actually read anything. */
-export function webNote(web: WebSearchOutcome): string {
-  switch (web.status) {
+export function webNote(web: WebSearchOutcome | undefined): string {
+  switch (web?.status) {
     case 'on':
       return web.sources.length
         ? `Checked ${web.sources.length} source${web.sources.length === 1 ? '' : 's'} online`

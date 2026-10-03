@@ -8,7 +8,7 @@
 import { providerLabel } from '@/src/providers/http';
 import {
   formatRecord,
-  myMatchup,
+  matchupFor,
   sides,
   type LeagueSnapshot,
   type Roster,
@@ -47,11 +47,18 @@ function teamLine(t: Team | undefined): string {
   return `${t.name} (${formatRecord(t.record)}${pts}${rank})`;
 }
 
-export function buildLeagueContext(s: LeagueSnapshot): string {
+/**
+ * Everything the coach knows about one team in one league.
+ *
+ * `focusTeamId` is the team on screen — usually the user's, but scouting an
+ * opponent works the same way, and the coach is told which it is.
+ */
+export function buildLeagueContext(s: LeagueSnapshot, focusTeamId?: string | null): string {
   const { league } = s;
   const teams = new Map(s.teams.map((t) => [t.id, t]));
   const rosters = new Map(s.rosters.map((r) => [r.teamId, r]));
   const me = league.myTeamId;
+  const focus = focusTeamId ?? me;
 
   const lines = [
     `League: ${league.name} — ${providerLabel(league.provider)} ${league.sport.toUpperCase()} ${league.season}`,
@@ -60,25 +67,39 @@ export function buildLeagueContext(s: LeagueSnapshot): string {
     `Data fetched: ${new Date(s.fetchedAt).toISOString()}`,
   ];
 
-  if (!me) {
-    lines.push('', 'Which team is the user\'s is unknown — ask them.');
+  if (!focus) {
+    lines.push('', "Which team is the user's is unknown — ask them.");
     return lines.join('\n');
   }
 
-  lines.push('', `My team: ${teamLine(teams.get(me))}`);
-  const m = myMatchup(s);
+  const scouting = focus !== me;
+  if (scouting) {
+    lines.push('', `Team being viewed: ${teamLine(teams.get(focus))} — NOT the user's team; they are scouting it.`);
+    if (me) lines.push(`User's own team: ${teamLine(teams.get(me))}`);
+  } else {
+    lines.push('', `My team: ${teamLine(teams.get(focus))}`);
+  }
+
+  const title = scouting ? 'Viewed team roster' : 'My roster';
+  const m = matchupFor(s, focus);
   if (m) {
-    const [mine, opp] = sides(m, me);
+    const [mine, opp] = sides(m, focus);
     const score = (p: number | null) => (p == null ? '—' : p.toFixed(1));
     if (opp) {
       lines.push(`This week vs ${teamLine(teams.get(opp.teamId))}: ${score(mine.points)} – ${score(opp.points)}`);
     } else {
       lines.push('This week: bye');
     }
-    lines.push('', ...rosterBlock('My roster', rosters.get(me)));
+    lines.push('', ...rosterBlock(title, rosters.get(focus)));
     if (opp) lines.push('', ...rosterBlock('Opponent roster', rosters.get(opp.teamId)));
   } else {
-    lines.push('', ...rosterBlock('My roster', rosters.get(me)));
+    lines.push('', ...rosterBlock(title, rosters.get(focus)));
+  }
+  // Scouting someone I'm not playing: include my roster so trade ideas work.
+  // (If I am their opponent, it is already listed above.)
+  const facingMe = !!m && (m.home.teamId === me || m.away?.teamId === me);
+  if (scouting && me && !facingMe) {
+    lines.push('', ...rosterBlock('My roster (for trade ideas)', rosters.get(me)));
   }
 
   const standings = [...s.teams].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99));
@@ -88,18 +109,20 @@ export function buildLeagueContext(s: LeagueSnapshot): string {
   return lines.join('\n');
 }
 
-export function cornerPrompt(mode: CornerMode, context: string, question?: string): string {
+/** The question for one play. The league context travels separately, in the system prompt. */
+export function cornerQuestion(mode: CornerMode, question?: string, scouting = false): string {
   const q = question?.trim();
   const ask: Record<CornerMode, string> = {
-    lineup:
-      'Set my best lineup for this period. For every starting slot say START or SIT and name who replaces anyone you bench. Check injuries, practice reports, matchups and weather first. Flag coin-flips.',
-    waivers:
-      'Who should I pick up and who should I drop? Look at current waiver trends and breakout usage, then rank up to five adds, each with the player on my roster I should drop for them.',
-    trade:
-      'Where is my roster thin and where do I have surplus? Suggest two or three realistic trade targets, and what I could offer from my roster. Use current values, not preseason ones.',
-    ask: q || 'What is the one move that helps my team most right now?',
+    lineup: scouting
+      ? "Who on this team should start this period, and where is their lineup weak that my team can exploit? Check injuries and practice reports first."
+      : 'Set my best lineup for this period. For every starting slot say START or SIT and name who replaces anyone you bench. Check injuries, practice reports, matchups and weather first. Flag coin-flips.',
+    waivers: scouting
+      ? 'Which free agents would most help this team? Tell me which of them I should grab first to block them.'
+      : 'Who should I pick up and who should I drop? Look at current waiver trends and breakout usage, then rank up to five adds, each with the player on my roster I should drop for them.',
+    trade: scouting
+      ? 'What does this team need, and what realistic trade could I offer them from my roster? Use current values.'
+      : 'Where is my roster thin and where do I have surplus? Suggest two or three realistic trade targets, and what I could offer from my roster. Use current values, not preseason ones.',
+    ask: q || (scouting ? 'What should I know about this team?' : 'What is the one move that helps my team most right now?'),
   };
-  return [ask[mode], mode !== 'ask' && q ? `\nAlso: ${q}` : '', '', '--- League context ---', context]
-    .filter((l) => l !== '')
-    .join('\n');
+  return mode !== 'ask' && q ? `${ask[mode]}\n\nAlso: ${q}` : ask[mode];
 }

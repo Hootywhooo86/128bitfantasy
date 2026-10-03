@@ -1,11 +1,10 @@
 /**
- * Draws the 128BIT FANTASY logo — a pixel whistle — and writes every icon size.
+ * Draws the 128BIT FANTASY logo — a silver pixel whistle on an angle — and writes every icon size.
  *
  *   node scripts/build-logo.mjs
  *
- * No image libraries: the whistle is a 24×24 grid built from a few shapes, and
- * PNGs are encoded by hand with zlib. Same palette as 128BIT FIT's heart so the
- * family reads as one set.
+ * No image libraries: the whistle is a 28×28 grid built from a few shapes, and
+ * PNGs are encoded by hand with zlib. Silver, tilted mid-blow.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -15,48 +14,72 @@ import { deflateSync } from 'node:zlib';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const PALETTE = {
-  O: [15, 31, 69, 255], // navy outline (FIT's heart detail colour)
-  T: [38, 211, 195, 255], // teal body (FIT's heart)
-  D: [24, 160, 150, 255], // teal shadow
-  H: [214, 248, 242, 255], // highlight
-  K: [15, 31, 69, 255], // air slot
+  O: [70, 76, 86, 255], // gunmetal outline — light enough to read on black
+  T: [196, 202, 211, 255], // silver body
+  D: [134, 141, 152, 255], // silver shadow
+  H: [255, 255, 255, 255], // shine
+  K: [38, 42, 50, 255], // air slot
+  R: [98, 105, 116, 255], // lanyard ring
 };
 
-const N = 24;
+const N = 28;
+/** Tilt, in degrees. Negative lifts the mouthpiece, like it's mid-blow. */
+const ANGLE = -24;
 
+/**
+ * The whistle is described flat, in its own coordinates (origin at the
+ * chamber's centre, mouthpiece pointing left), then every grid pixel is
+ * rotated back into that frame and tested. Rotating the shape rather than the
+ * finished pixels keeps the edges clean at an angle.
+ */
 function draw() {
   const g = Array.from({ length: N }, () => Array(N).fill('.'));
-  const cx = 15.5, cy = 14.5, r = 7.6;
-  const inCircle = (x, y) => (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r;
-  const inMouth = (x, y) => x >= 1 && x <= 13 && y >= 8 && y <= 12;
-  const body = (x, y) => inCircle(x, y) || inMouth(x, y);
+  const a = (ANGLE * Math.PI) / 180;
+  const cos = Math.cos(a), sin = Math.sin(a);
+  const ox = 17.6, oy = 16.6; // where the chamber centre lands on the grid
+
+  /** Grid pixel → flat whistle coordinates. */
+  const local = (x, y) => {
+    const dx = x + 0.5 - ox, dy = y + 0.5 - oy;
+    return [dx * cos + dy * sin, -dx * sin + dy * cos];
+  };
+  const R = 7.4;
+  const inChamber = (u, v) => u * u + v * v <= R * R;
+  const inMouth = (u, v) => u >= -12.6 && u <= 0 && v >= -R && v <= -R + 6.6;
+  const body = (u, v) => inChamber(u, v) || inMouth(u, v);
+  const ring = (u, v) => {
+    const d = Math.hypot(u - 4.2, v + R + 2.1);
+    return d >= 1.5 && d <= 2.9;
+  };
+
+  const at = (x, y) => (x < 0 || y < 0 || x >= N || y >= N ? false : body(...local(x, y)));
 
   for (let y = 0; y < N; y++)
     for (let x = 0; x < N; x++) {
-      if (!body(x, y)) continue;
-      const edge = [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => {
-        const nx = x + dx, ny = y + dy;
-        return nx < 0 || ny < 0 || nx >= N || ny >= N || !body(nx, ny);
-      });
-      if (edge) g[y][x] = 'O';
-      else {
-        // Light from the top-left: shadow on the lower-right of the chamber.
-        const shade = inCircle(x, y) && (x + 0.5 - cx) + (y + 0.5 - cy) > 6;
-        g[y][x] = shade ? 'D' : 'T';
+      const [u, v] = local(x, y);
+      if (body(u, v)) {
+        // Eight neighbours, not four: at an angle a four-neighbour outline leaves
+        // diagonal gaps and the silver bleeds into the background.
+        const edge = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]].some(([dx, dy]) => !at(x + dx, y + dy));
+        if (edge) g[y][x] = 'O';
+        // The air slot, cut into the top where the mouthpiece meets the chamber.
+        else if (u >= -4.2 && u <= -0.6 && v <= -R + 2.6) g[y][x] = 'K';
+        // A shine stripe along the mouthpiece, and a glint on the chamber.
+        else if (inMouth(u, v) && !inChamber(u, v) && v <= -R + 2.4 && u <= -5) g[y][x] = 'H';
+        else if (Math.hypot(u + 3.2, v + 2.6) <= 0.95) g[y][x] = 'H';
+        // Light from the top left: shadow on the lower right of the chamber.
+        else if (inChamber(u, v) && u + v > 4.2) g[y][x] = 'D';
+        else g[y][x] = 'T';
+      } else if (ring(u, v)) {
+        g[y][x] = 'R';
       }
     }
-
-  // The air slot on top of the mouthpiece, where it meets the chamber.
-  for (const [x, y] of [[9, 9], [10, 9], [11, 9], [9, 10], [10, 10]]) g[y][x] = 'K';
-  // Highlights: a glint on the mouthpiece and on the chamber.
-  for (const [x, y] of [[3, 9], [4, 9], [5, 9], [3, 10]]) g[y][x] = 'H';
-  for (const [x, y] of [[12, 12], [13, 12], [12, 13]]) g[y][x] = 'H';
-
-  // Lanyard ring above the chamber.
-  const ring = [[18, 2], [19, 2], [20, 2], [17, 3], [21, 3], [17, 4], [21, 4], [17, 5], [21, 5], [18, 6], [19, 6], [20, 6]];
-  for (const [x, y] of ring) g[y][x] = 'O';
-  // Ties the ring to the chamber.
-  g[7][18] = 'O';
+  // Drop outline pixels that outline nothing — single stray corners the
+  // rotation leaves behind.
+  const filled = (x, y) => y >= 0 && x >= 0 && y < N && x < N && 'THDK'.includes(g[y][x]);
+  for (let y = 0; y < N; y++)
+    for (let x = 0; x < N; x++)
+      if (g[y][x] === 'O' && ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dy]) => filled(x + dx, y + dy))) g[y][x] = '.';
   return g;
 }
 

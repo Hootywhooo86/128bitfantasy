@@ -1,0 +1,90 @@
+name: APK
+
+# A phone cannot install an APK that only exists on a build machine. This
+# builds one and attaches it to a GitHub Release, so the download is a plain
+# link that works in a phone browser with no login and no zip to unpack.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0-alpha.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: build and release
+    runs-on: ubuntu-latest
+    # Inlined into the JS bundle, so the installed app knows which release it
+    # is and Settings → CHECK FOR APP UPDATE can compare it with the newest one.
+    env:
+      EXPO_PUBLIC_RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # No setup-android step: the ubuntu runner already ships the Android SDK,
+      # and android-actions/setup-android@v3 fails outright trying to install
+      # the long-removed "tools" package ("Failed to find package 'tools'").
+      - name: Point the build at the runner's Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+
+      - run: npm ci
+
+      - name: Prebuild android/
+        run: npx expo prebuild --platform android --no-install
+
+      # x86 and x86_64 are emulator architectures and account for ~58 MB of the
+      # universal APK. Both ARM targets are kept so the build installs on 32-bit
+      # phones as well as modern 64-bit ones.
+      - name: Build release APK
+        working-directory: android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a --console=plain
+
+      - name: Name the artifact
+        id: apk
+        run: |
+          set -euo pipefail
+          src=android/app/build/outputs/apk/release/app-release.apk
+          out="128bitfantasy-${{ inputs.tag }}.apk"
+          cp "$src" "$out"
+          echo "path=$out" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "$out" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: ${{ steps.apk.outputs.path }}
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          name: ${{ inputs.tag }}
+          files: ${{ steps.apk.outputs.path }}
+          body: |
+            Android APK, ${{ steps.apk.outputs.size }}, built from `${{ github.sha }}`.
+
+            Install: open this page on the phone, tap the `.apk`, and allow
+            installing from your browser when Android asks.
+
+            Signed with the React Native template's **debug keystore**. That is
+            fine for sideloading and is not acceptable for a Play submission —
+            a real upload key has to replace it first.
+
+            arm64-v8a and armeabi-v7a only. x86 emulator images are not
+            included.

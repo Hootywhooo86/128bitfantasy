@@ -13,7 +13,8 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { TopBar } from '@/components/TopBar';
-import { CONTENT_MAX_WIDTH, colors, fonts, radius, spacing } from '@/lib/theme';
+import { useAccent } from '@/lib/accent';
+import { CONTENT_MAX_WIDTH, colors, fonts, radius, spacing, themedStyles } from '@/lib/theme';
 
 /**
  * The building blocks, same classes as 128BIT FIT's shell. Screens are put
@@ -36,6 +37,9 @@ export function Screen({
   refreshing?: boolean;
 }) {
   const router = useRouter();
+  // Keyed on the accent so a colour change repaints the screen's content
+  // without resetting navigation.
+  const accent = useAccent();
   return (
     <View style={s.screen}>
       <TopBar
@@ -44,8 +48,9 @@ export function Screen({
         onBack={back ? () => (router.canGoBack() ? router.back() : router.replace('/')) : undefined}
       />
       <ScrollView
+        key={accent}
         style={s.screen}
-        contentContainerStyle={[s.main, back && s.noTab]}
+        contentContainerStyle={s.main}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           onRefresh ? (
@@ -213,10 +218,9 @@ export function Empty({ title, body, action }: { title: string; body: string; ac
   );
 }
 
-export const s = StyleSheet.create({
+export const s = themedStyles(() => StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  main: { padding: spacing.md, paddingBottom: 104, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' },
-  noTab: { paddingBottom: spacing.xl },
+  main: { padding: spacing.md, paddingBottom: 48, width: '100%', maxWidth: CONTENT_MAX_WIDTH, alignSelf: 'center' },
   lblWrap: { marginTop: spacing.lg, marginBottom: 10 },
   lbl: { fontFamily: fonts.pixel, fontSize: 8, color: colors.textDim, letterSpacing: 1.5 },
   card: {
@@ -277,4 +281,4 @@ export const s = StyleSheet.create({
   noteT: { fontSize: 12.5, color: colors.textMuted, lineHeight: 21, fontFamily: fonts.body },
   emptyT: { fontFamily: fonts.pixel, fontSize: 11, color: colors.text, letterSpacing: 1, textAlign: 'center' },
   emptyB: { fontSize: 13, color: colors.textMuted, marginTop: 10, lineHeight: 20, textAlign: 'center', fontFamily: fonts.body },
-});
+}));

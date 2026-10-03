@@ -13,6 +13,7 @@ import type { Connection } from '@/src/providers/types';
 import type { League, LeagueSnapshot, ProviderId, Sport } from './models';
 
 const LEAGUES_KEY = 'leagues_v1';
+const SYNCED_KEY = 'leagues_synced_at_v1';
 const snapKey = (l: Pick<League, 'provider' | 'id'>) => `snap_v1_${l.provider}_${l.id}`;
 
 export type SyncResult = {
@@ -45,22 +46,71 @@ export async function syncLeagues(signal?: AbortSignal): Promise<SyncResult> {
   // Leagues from a provider that has since been disconnected are dropped.
   const kept = leagues.filter((l) => connected.has(l.provider));
   await setJsonItem(LEAGUES_KEY, kept);
+  await setJsonItem(SYNCED_KEY, Date.now());
   return {
     leagues: kept,
     errors: results.filter((r) => r.error).map((r) => ({ provider: r.provider, message: r.error! })),
   };
 }
 
+export async function lastSyncedAt(): Promise<number | null> {
+  return getJsonItem<number>(SYNCED_KEY);
+}
+
 export async function cachedSnapshot(l: Pick<League, 'provider' | 'id'>): Promise<LeagueSnapshot | null> {
   return getJsonItem<LeagueSnapshot>(snapKey(l));
 }
 
-export async function fetchSnapshot(league: League, signal?: AbortSignal): Promise<LeagueSnapshot> {
-  const conn = (await getConnections()).find((c) => c.provider === league.provider);
-  if (!conn) throw new Error(`Connect ${league.provider} again to refresh this league.`);
-  const snap = await adapterFor(conn).snapshot(conn, league, signal);
-  await setJsonItem(snapKey(league), snap);
-  return snap;
+/**
+ * Requests already on the wire, by league. Home, the league screen and the
+ * coach can all ask for the same league in the same second; they share one
+ * fetch instead of tripling the wait and the rate-limit cost.
+ */
+const inFlight = new Map<string, Promise<LeagueSnapshot>>();
+
+export function fetchSnapshot(league: League, signal?: AbortSignal): Promise<LeagueSnapshot> {
+  const k = snapKey(league);
+  const running = inFlight.get(k);
+  if (running) return running;
+  const p = (async () => {
+    const conn = (await getConnections()).find((c) => c.provider === league.provider);
+    if (!conn) throw new Error(`Connect ${league.provider} again in Settings to refresh this league.`);
+    const snap = await adapterFor(conn).snapshot(conn, league, signal);
+    await setJsonItem(k, snap);
+    return snap;
+  })().finally(() => inFlight.delete(k));
+  inFlight.set(k, p);
+  return p;
+}
+
+/** Older than this, a cached snapshot is refreshed in the background when shown. */
+export const STALE_MS = 5 * 60_000;
+
+/**
+ * Refreshes the given leagues' snapshots, a few at a time, skipping fresh
+ * ones. Home calls this after painting from cache, so the screen is instant
+ * and the numbers catch up a moment later.
+ */
+export async function refreshStale(
+  leagues: League[],
+  onSnapshot: (s: LeagueSnapshot) => void,
+  now = Date.now()
+): Promise<void> {
+  const queue: League[] = [];
+  for (const l of leagues) {
+    const c = await cachedSnapshot(l);
+    if (!c || now - c.fetchedAt > STALE_MS) queue.push(l);
+  }
+  const worker = async () => {
+    for (let l = queue.shift(); l; l = queue.shift()) {
+      try {
+        onSnapshot(await fetchSnapshot(l));
+      } catch {
+        // The card keeps its cached numbers and age; the league screen shows the error.
+      }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
 }
 
 export function groupBySport(leagues: League[]): Map<Sport, League[]> {

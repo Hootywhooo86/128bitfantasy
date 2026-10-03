@@ -1,9 +1,13 @@
 import * as WebBrowser from 'expo-web-browser';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Text } from 'react-native';
-import { Button, Card, CardHead, Chips, Field, Label, Note, Screen, s as ui } from '@/components/ui';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Button, Card, CardHead, Chips, Field, Label, Note, Screen } from '@/components/ui';
 import { describeNetworkFailure } from '@/lib/net-errors';
+import { lastHealth } from '@/lib/storage/health';
+import { colors, fonts, themedStyles } from '@/lib/theme';
+import type { Health } from '@/src/providers/health';
+import { accessLabel, PROVIDER_INFO } from '@/src/providers/info';
 import { getConnection, removeConnection, saveConnection } from '@/lib/storage/connections';
 import { providerLabel } from '@/src/providers/http';
 import type { Connection } from '@/src/providers/types';
@@ -13,13 +17,14 @@ import { SPORTS, type ProviderId, type Sport } from '@/src/sports/models';
 
 const splitIds = (v: string) => v.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
 
-export default function Connect() {
+export default function Account() {
   const { provider } = useLocalSearchParams<{ provider: ProviderId }>();
   const router = useRouter();
   const [existing, setExisting] = useState<Connection | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [health, setHealth] = useState<Health | null>(null);
 
   // One bag of form fields; each provider uses the ones it needs.
   const [f, setF] = useState({
@@ -37,6 +42,7 @@ export default function Connect() {
   const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
 
   useEffect(() => {
+    lastHealth().then((r) => setHealth(r?.results[provider] ?? null));
     getConnection(provider).then((c) => {
       setExisting(c);
       if (!c) return;
@@ -109,7 +115,9 @@ export default function Connect() {
   }
 
   return (
-    <Screen section={`Connect ${providerLabel(provider)}`} back right="none">
+    <Screen section={`Sign in · ${providerLabel(provider)}`} back right="none">
+      <AboutProvider provider={provider} health={health} signedIn={!!existing} />
+
       {provider === 'sleeper' && (
         <Card>
           <CardHead title="SLEEPER" note="Official API" />
@@ -167,21 +175,12 @@ export default function Connect() {
             secureTextEntry
             hint="Fantrax → User Profile. Lists your leagues automatically, though Fantrax often returns none."
           />
-          <Note>
-            Fantrax has no official API. This uses its read-only public feed, which only works for leagues the commissioner
-            has made publicly viewable, and has no live scores. It may break without warning.
-          </Note>
         </Card>
       )}
 
       {provider === 'yahoo' && (
         <Card>
           <CardHead title="YAHOO" note="Official API · OAuth" />
-          <Note>
-            Yahoo needs an app to sign in through. Create one free at developer.yahoo.com → My Apps → Create App, with
-            Redirect URI “oob” and API permission Fantasy Sports: Read. Paste its keys here — they stay on this phone, like
-            your AI key.
-          </Note>
           <Field label="CLIENT ID" value={f.clientId} onChangeText={set('clientId')} />
           <Field label="CLIENT SECRET" value={f.clientSecret} onChangeText={set('clientSecret')} secureTextEntry />
           <Button
@@ -196,11 +195,67 @@ export default function Connect() {
 
       {error ? <Note tone="error">{error}</Note> : null}
       {info ? <Note>{info}</Note> : null}
-      <Button label={existing ? 'SAVE & SYNC' : 'CONNECT'} onPress={save} busy={busy} />
-      {existing ? <Button label="DISCONNECT" kind="danger" onPress={disconnect} /> : null}
-      <Text style={[ui.fieldH, { marginTop: 14 }]}>
-        Read-only: nothing here can change your lineup or make a move.
-      </Text>
+      <Button label={existing ? 'SAVE & SYNC' : 'SIGN IN'} onPress={save} busy={busy} />
+      {existing ? <Button label="SIGN OUT" kind="danger" onPress={disconnect} /> : null}
     </Screen>
   );
 }
+
+/**
+ * Before the form: what this provider can do, what we do with it, how to get
+ * the details, and where to go when it doesn't work.
+ */
+function AboutProvider({ provider, health, signedIn }: { provider: ProviderId; health: Health | null; signedIn: boolean }) {
+  const info = PROVIDER_INFO[provider];
+  const tone = !health ? colors.textDim : health.status === 'ok' ? colors.win : health.status === 'changed' ? colors.warn : colors.loss;
+  return (
+    <Card>
+      <CardHead title={info.label.toUpperCase()} note={signedIn ? 'Signed in' : info.official ? 'Official API' : 'Unofficial'} />
+      <View style={st.badges}>
+        <Badge label={`API: ${accessLabel(info.apiAccess)}`} />
+        <Badge label={`THIS APP: ${accessLabel(info.appAccess)}`} accent />
+      </View>
+      <Text style={st.body}>{info.accessNote}</Text>
+      <Text style={st.stepsT}>HOW TO SIGN IN</Text>
+      {info.steps.map((step, i) => (
+        <Text key={step} style={st.step}>{`${i + 1}. ${step}`}</Text>
+      ))}
+      <Text style={st.stepsT}>HAVING PROBLEMS?</Text>
+      <View style={st.links}>
+        {info.help.map((h) => (
+          <Pressable key={h.url} style={st.link} onPress={() => WebBrowser.openBrowserAsync(h.url)}>
+            <Text style={st.linkT}>{`${h.label} ↗`}</Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={[st.health, { color: tone }]}>
+        {health ? `API STATUS: ${health.status.toUpperCase()} · ${health.detail}` : 'API STATUS: NOT CHECKED YET (SETTINGS → FANTASY APIS)'}
+      </Text>
+    </Card>
+  );
+}
+
+function Badge({ label, accent }: { label: string; accent?: boolean }) {
+  return (
+    <View style={[st.badge, accent && st.badgeOn]}>
+      <Text style={[st.badgeT, accent && st.badgeTOn]}>{label}</Text>
+    </View>
+  );
+}
+
+const st = themedStyles(() =>
+  StyleSheet.create({
+    badges: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 },
+    badge: { borderWidth: 1, borderColor: colors.borderBright, borderRadius: 6, paddingVertical: 5, paddingHorizontal: 8 },
+    badgeOn: { borderColor: colors.accent },
+    badgeT: { fontFamily: fonts.pixel, fontSize: 7.5, color: colors.textMuted, letterSpacing: 0.8 },
+    badgeTOn: { color: colors.accent },
+    body: { fontSize: 13, color: colors.textMuted, lineHeight: 19, fontFamily: fonts.body },
+    stepsT: { fontFamily: fonts.pixel, fontSize: 8, color: colors.textDim, letterSpacing: 1.3, marginTop: 14, marginBottom: 6 },
+    step: { fontSize: 13, color: colors.text, lineHeight: 20, fontFamily: fonts.body, marginBottom: 3 },
+    links: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    link: { borderWidth: 1, borderColor: colors.accent, borderRadius: 8, paddingVertical: 9, paddingHorizontal: 12 },
+    linkT: { fontFamily: fonts.bodySemi, fontSize: 13, color: colors.accent },
+    health: { fontFamily: fonts.pixel, fontSize: 7.5, letterSpacing: 0.8, marginTop: 14, lineHeight: 13 },
+  })
+);
