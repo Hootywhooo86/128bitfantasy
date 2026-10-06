@@ -71,8 +71,10 @@ jobs:
       # (ESPN sign-in) came in. The runner has 16 GB.
       - name: Give Gradle more memory
         run: |
-          sed -i '/^org.gradle.jvmargs=/d' android/gradle.properties
-          echo 'org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8' >> android/gradle.properties
+          # Replace in place: the generated file has no trailing newline, so
+          # appending glued the setting onto expo.inlineModules.watchedDirectories.
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8/' android/gradle.properties
+          grep -q '^org.gradle.jvmargs=-Xmx4g' android/gradle.properties
 
       # x86 and x86_64 are emulator architectures and account for ~58 MB of the
       # universal APK. Both ARM targets are kept so the build installs on 32-bit
