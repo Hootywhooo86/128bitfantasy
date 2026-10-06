@@ -67,6 +67,13 @@ jobs:
       - name: Prebuild android/
         run: npx expo prebuild --platform android --no-install
 
+      # The default 2 GB Gradle heap ran out merging dex files once the WebView
+      # (ESPN sign-in) came in. The runner has 16 GB.
+      - name: Give Gradle more memory
+        run: |
+          sed -i '/^org.gradle.jvmargs=/d' android/gradle.properties
+          echo 'org.gradle.jvmargs=-Xmx6g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8' >> android/gradle.properties
+
       # x86 and x86_64 are emulator architectures and account for ~58 MB of the
       # universal APK. Both ARM targets are kept so the build installs on 32-bit
       # phones as well as modern 64-bit ones.
