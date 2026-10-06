@@ -21,7 +21,6 @@
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/silkscreen": "^0.4.2",
-    "@react-native-cookies/cookies": "^6.2.1",
     "@supabase/supabase-js": "^2.117.2",
     "expo": "~57.0.24",
     "expo-background-task": "~57.0.21",

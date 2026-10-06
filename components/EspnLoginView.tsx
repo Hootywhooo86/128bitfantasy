@@ -1,6 +1,6 @@
-import CookieManager from '@react-native-cookies/cookies';
 import React, { useEffect, useRef } from 'react';
 import { WebView } from 'react-native-webview';
+import { cookiesAvailable, expireCookie, getCookies } from '@/modules/espn-cookies';
 
 const LOGIN_URL = 'https://www.espn.com/login';
 
@@ -12,13 +12,13 @@ export function EspnLoginView({ onCookies }: { onCookies: (c: { espnS2: string; 
   const done = useRef(false);
   useEffect(() => {
     // An old ESPN session would be picked up as this one; start clean.
-    CookieManager.clearByName('https://www.espn.com', 'espn_s2', true).catch(() => undefined);
+    expireCookie('https://www.espn.com', 'espn_s2').catch(() => undefined);
     const t = setInterval(async () => {
       if (done.current) return;
       try {
-        const jar = await CookieManager.get('https://www.espn.com', true);
-        const s2 = jar.espn_s2?.value;
-        const swid = jar.SWID?.value;
+        const jar = await getCookies('https://www.espn.com');
+        const s2 = jar.espn_s2;
+        const swid = jar.SWID;
         if (s2 && swid) {
           done.current = true;
           onCookies({ espnS2: decodeURIComponent(s2), swid: decodeURIComponent(swid) });
@@ -33,4 +33,5 @@ export function EspnLoginView({ onCookies }: { onCookies: (c: { espnS2: string; 
   return <WebView source={{ uri: LOGIN_URL }} sharedCookiesEnabled thirdPartyCookiesEnabled style={{ flex: 1 }} />;
 }
 
-export const espnLoginSupported = true;
+/** Android phone builds; iPhone builds would need the iOS half of the cookie module. */
+export const espnLoginSupported = cookiesAvailable;

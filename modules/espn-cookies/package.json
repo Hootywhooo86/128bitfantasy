@@ -1,0 +1,7 @@
+{
+  "name": "espn-cookies",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reads the WebView cookie store so the in-app ESPN sign-in can keep espn_s2 and SWID.",
+  "main": "index.ts"
+}
