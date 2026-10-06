@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Linking, StyleSheet, Text } from 'react-native';
+import { Alert, Linking, StyleSheet, Text } from 'react-native';
 import { Button, Card, CardHead, Field, Label, MenuRow, Note, Screen } from '@/components/ui';
 import {
   hostedConn,
@@ -8,12 +8,14 @@ import {
   sendEmailCode,
   signInQuick,
   signOutHosted,
+  deleteHostedAccount,
   verifyEmailCode,
   whoAmI,
   type HostedConn,
 } from '@/lib/leagues/client';
 import { joinLeague, myHostedLeagues, type LeagueRow } from '@/lib/leagues/data';
 import { removeConnection } from '@/lib/storage/connections';
+import { defaultHostedProject } from '@/src/providers/hosted-default';
 import { colors, fonts, themedStyles } from '@/lib/theme';
 import { SPORT_NAMES, type HostedSport } from '@/src/leagues/scoring';
 import { FORMAT_LABELS } from '@/src/leagues/types';
@@ -41,6 +43,10 @@ export default function Hosted() {
     joinCode: '',
   });
   const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
+  // The app's own league server, when this build has one. "Different project" is the advanced path.
+  const builtIn = defaultHostedProject();
+  const [picking, setPicking] = useState(false);
+  const onBuiltIn = !!builtIn && !!conn && conn.url === builtIn.url;
 
   const load = useCallback(() => {
     hostedConn().then(async (c) => {
@@ -74,9 +80,12 @@ export default function Hosted() {
 
   if (conn === undefined) return <Screen section="128bit Leagues" back>{null}</Screen>;
 
-  if (!conn) {
+  if (!conn || picking) {
     return (
       <Screen section="128bit Leagues" back>
+        {builtIn ? (
+          <Button label="USE THE 128BIT SERVER INSTEAD" kind="ghost" onPress={() => run('builtin', async () => { await removeConnection('bit128'); setPicking(false); load(); })} />
+        ) : null}
         <Text style={st.title}>Run your own league</Text>
         <Text style={st.body}>
           Hockey, football, basketball or baseball with friends: snake, linear or auction drafts, keepers and dynasty, daily lineups,
@@ -110,6 +119,7 @@ export default function Hosted() {
             run('save', async () => {
               if (!f.url.trim() || !f.key.trim()) throw new Error('Paste both the Project URL and the key.');
               setConn(await saveHostedConn(f.url, f.key));
+              setPicking(false);
             })
           }
         />
@@ -121,7 +131,7 @@ export default function Hosted() {
     return (
       <Screen section="128bit Leagues" back>
         <Text style={st.title}>Sign in</Text>
-        <Text style={st.body}>{`Project: ${conn.url.replace(/^https:\/\//, '')}`}</Text>
+        <Text style={st.body}>{onBuiltIn ? 'One account for all your 128BIT leagues.' : `Project: ${conn.url.replace(/^https:\/\//, '')}`}</Text>
         {error ? <Note tone="error">{error}</Note> : null}
         <Card>
           <CardHead title="QUICK" note="this phone only" />
@@ -159,7 +169,13 @@ export default function Hosted() {
         <Button
           label="USE A DIFFERENT PROJECT"
           kind="ghost"
-          onPress={() => run('forget', async () => { await removeConnection('bit128'); setConn(null); })}
+          onPress={() =>
+            run('forget', async () => {
+              if (!onBuiltIn) await removeConnection('bit128');
+              setF((x) => ({ ...x, url: '', key: '' }));
+              setPicking(true);
+            })
+          }
         />
       </Screen>
     );
@@ -213,6 +229,31 @@ export default function Hosted() {
       </Card>
 
       <Button label="SIGN OUT" kind="ghost" onPress={() => run('out', async () => { await signOutHosted(); setMe(null); setLeagues([]); })} />
+      <Button
+        label="DELETE MY ACCOUNT"
+        kind="danger"
+        busy={busy === 'delete'}
+        onPress={() =>
+          Alert.alert(
+            'Delete your 128BIT LEAGUES account?',
+            "This can't be undone. Leagues that haven't drafted lose your team. In leagues that have started, your team stays (marked as left) so everyone can finish; leagues you run pass to another member.",
+            [
+              { text: 'Keep it', style: 'cancel' },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: () =>
+                  run('delete', async () => {
+                    await deleteHostedAccount();
+                    setMe(null);
+                    setLeagues([]);
+                    await syncLeagues().catch(() => undefined);
+                  }),
+              },
+            ]
+          )
+        }
+      />
     </Screen>
   );
 }

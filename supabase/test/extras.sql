@@ -156,4 +156,17 @@ update leagues set lot = lot || jsonb_build_object('ends_at', now() - interval '
 select close_lot(:'la');
 select pg_temp.check((select status from leagues where id = :'la') = 'season', 'auction done when every roster is full');
 
+-- ── Deleting an account ──
+select pg_temp.as_user('c');
+select create_league('Solo', 'nhl', '20262027', 2, '{"slots":{"C":1,"G":1},"bench":0}', 'Only Me') as solo \gset
+select pg_temp.as_user('a');
+select delete_my_account();
+select pg_temp.check(not exists (select 1 from auth.users where id = '00000000-0000-0000-0000-00000000000a'), 'account gone');
+select pg_temp.check((select commissioner from leagues where id = :'l') = '00000000-0000-0000-0000-00000000000b', 'league handed to another member');
+select pg_temp.check((select owner is null and name like '%(left)' from teams where id = :'aa'), 'team stays, ownerless');
+select pg_temp.check((select status from leagues where id = :'la') = 'season', 'the league keeps going');
+select pg_temp.as_user('c');
+select delete_my_account();
+select pg_temp.check(not exists (select 1 from leagues where id = :'solo'), 'a league with nobody else in it is deleted');
+
 \echo 'extras.sql: all checks passed'

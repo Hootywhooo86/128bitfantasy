@@ -24,6 +24,7 @@ import { SPORT_NAMES } from '@/src/leagues/scoring';
 import { nextSeason, settingsSummary } from '@/src/leagues/settings';
 import { champion, leagueTable } from '@/src/leagues/standings';
 import { FORMAT_LABELS, type PoolPlayer } from '@/src/leagues/types';
+import { defaultHostedProject } from '@/src/providers/hosted-default';
 import { syncLeagues } from '@/src/sports/hub';
 
 const ACTIVITY: Record<string, string> = {
@@ -157,7 +158,9 @@ export default function HostedLeague() {
                 }).catch(() => undefined)
               }
             />
-            <Text style={st.small}>They also need the same Supabase Project URL and key — send those the first time.</Text>
+            {defaultHostedProject() ? null : (
+              <Text style={st.small}>They also need the same Supabase Project URL and key — send those the first time.</Text>
+            )}
           </Card>
           {league.previousId ? (
             <MenuRow

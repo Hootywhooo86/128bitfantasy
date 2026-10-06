@@ -1184,6 +1184,39 @@ begin
   delete from teams where id = p_team;
 end $$;
 
+-- ── Your account ─────────────────────────────────────────────────────────
+
+-- A deleted account leaves its team behind (ownerless) so the rest of the
+-- league keeps playing; the commissioner can run it from Commissioner Tools.
+alter table teams alter column owner drop not null;
+alter table teams drop constraint if exists teams_owner_fkey;
+alter table teams add constraint teams_owner_fkey foreign key (owner) references auth.users (id) on delete set null;
+
+-- Delete your account and everything that's only yours. Leagues you run pass
+-- to another member (or are deleted if you're the only one in them).
+create or replace function delete_my_account()
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  lg record;
+  heir uuid;
+begin
+  if me is null then raise exception 'Sign in first.'; end if;
+  for lg in select * from leagues where commissioner = me loop
+    heir := (select owner from teams where league_id = lg.id and owner is not null and owner <> me order by id limit 1);
+    if heir is null then
+      delete from leagues where id = lg.id;
+    else
+      update leagues set commissioner = heir where id = lg.id;
+      insert into transactions (league_id, kind, detail) values (lg.id, 'commish', 'Commissioner left; league handed to another member');
+    end if;
+  end loop;
+  -- Leagues that haven't drafted: just leave them.
+  delete from teams where owner = me and league_id in (select id from leagues where status = 'setup');
+  update teams set name = left(name, 30) || ' (left)' where owner = me;
+  delete from auth.users where id = me;
+end $$;
+
 -- The old name, for phones on an older app version.
 create or replace function snake_team(draft_order uuid[], pick_no int) returns uuid
 language sql immutable as $$ select draft_team(draft_order, pick_no, 'snake') $$;
@@ -1194,7 +1227,7 @@ begin
   foreach f in array array['create_league', 'update_league', 'join_league', 'start_draft', 'make_pick', 'set_lineup', 'set_slot', 'add_drop',
     'place_claim', 'cancel_claim', 'process_waivers', 'propose_trade', 'respond_trade', 'cancel_trade', 'review_trade', 'veto_vote',
     'process_trades', 'record_week', 'rename_team', 'leave_league', 'nominate', 'place_bid', 'close_lot', 'new_season', 'set_keepers',
-    'commish_move', 'commish_lineup', 'commish_team', 'commish_pick', 'commish_transfer', 'commish_remove_team'] loop
+    'commish_move', 'commish_lineup', 'commish_team', 'commish_pick', 'commish_transfer', 'commish_remove_team', 'delete_my_account'] loop
     execute format('revoke all on function %I from public, anon', f);
     execute format('grant execute on function %I to authenticated', f);
   end loop;

@@ -112,6 +112,17 @@ export async function whoAmI(): Promise<{ id: string; label: string } | null> {
   return { id: u.id, label: u.email ?? (u.is_anonymous ? 'Quick account on this phone' : u.id.slice(0, 8)) };
 }
 
+/**
+ * Deletes the account and everything that's only yours. Your teams in
+ * leagues that have started stay (marked "left") so friends can finish the
+ * season; leagues you run pass to another member.
+ */
+export async function deleteHostedAccount(): Promise<void> {
+  const sb = await hosted();
+  must(await sb.rpc('delete_my_account'));
+  await sb.auth.signOut().catch(() => undefined);
+}
+
 export async function signOutHosted(): Promise<void> {
   const sb = await hosted();
   await sb.auth.signOut();

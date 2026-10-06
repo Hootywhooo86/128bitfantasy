@@ -6,6 +6,7 @@
  */
 import type { Connection } from '@/src/providers/types';
 import type { ProviderId } from '@/src/sports/models';
+import { defaultHostedProject } from '@/src/providers/hosted-default';
 import { deleteSecret, getSecret, setSecret, SecureStoreError } from './secure';
 
 const PROVIDERS: ProviderId[] = ['bit128', 'sleeper', 'yahoo', 'fantrax', 'espn', 'fleaflicker', 'mfl'];
@@ -15,6 +16,11 @@ export async function getConnection<P extends ProviderId>(
   p: P
 ): Promise<Extract<Connection, { provider: P }> | null> {
   const raw = await getSecret(key(p));
+  // 128BIT LEAGUES uses the app's own server unless someone chose another project.
+  if (!raw && p === 'bit128') {
+    const d = defaultHostedProject();
+    return d ? ({ provider: 'bit128', ...d } as Extract<Connection, { provider: P }>) : null;
+  }
   if (!raw) return null;
   try {
     const c = JSON.parse(raw) as Connection;

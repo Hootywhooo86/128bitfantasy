@@ -37,6 +37,10 @@ jobs:
       # The typed-in tag on a manual run, the pushed tag otherwise.
       TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || format('v0.1.0-alpha.{0}', github.run_number) }}
       EXPO_PUBLIC_RELEASE_TAG: ${{ inputs.tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || format('v0.1.0-alpha.{0}', github.run_number) }}
+      # The app's own 128BIT LEAGUES server (repo → Settings → Secrets and variables
+      # → Actions → Variables). Public by design; empty = people connect their own.
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_KEY: ${{ vars.SUPABASE_PUBLISHABLE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
