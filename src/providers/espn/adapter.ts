@@ -8,7 +8,7 @@ type EspnConn = Extract<Connection, { provider: 'espn' }>;
  * ESPN's numeric codes. Taken from the ids the ESPN site itself uses; an id
  * missing here shows as its number rather than a guess.
  */
-const SLOTS: Record<Sport, Record<number, string>> = {
+export const SLOTS: Record<Sport, Record<number, string>> = {
   nfl: { 0: 'QB', 2: 'RB', 3: 'RB/WR', 4: 'WR', 5: 'WR/TE', 6: 'TE', 7: 'OP', 16: 'D/ST', 17: 'K', 20: 'BN', 21: 'IR', 23: 'FLEX' },
   nba: { 0: 'PG', 1: 'SG', 2: 'SF', 3: 'PF', 4: 'C', 5: 'G', 6: 'F', 7: 'SG/SF', 8: 'G/F', 9: 'PF/C', 10: 'F/C', 11: 'UTIL', 12: 'BN', 13: 'IR' },
   nhl: { 0: 'C', 1: 'LW', 2: 'RW', 3: 'F', 4: 'D', 5: 'G', 6: 'UTIL', 7: 'BN', 8: 'IR' },

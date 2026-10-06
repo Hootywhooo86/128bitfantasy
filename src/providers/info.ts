@@ -92,13 +92,13 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     apiAccess: 'read-write',
     appAccess: 'read-only',
     official: false,
-    connectWith: 'League ID (+ two cookies for private leagues)',
+    connectWith: 'League ID + ESPN sign-in (private leagues)',
     accessNote:
-      "ESPN has no public API. Its site can write with your login cookies, but this app only reads — it never moves a player.",
+      'ESPN has no public API. Read only by default. Switch to READ & WRITE to start bench players from Lineup Check — unofficial, can break any week, and against ESPN\'s terms; your call.',
     steps: [
       'Open your league on espn.com. The number after leagueId= in the address is the League ID.',
-      'Private league? On a computer, sign in to espn.com → DevTools (F12) → Application → Cookies → espn.com.',
-      'Copy espn_s2 and SWID here. SWID also tells us which team is yours.',
+      'Private league? Tap SIGN IN WITH ESPN (phone app) — or copy espn_s2 and SWID from a computer browser.',
+      'Signing in also tells us which team is yours.',
     ],
     help: [
       { label: 'ESPN Fantasy', url: 'https://www.espn.com/fantasy/' },

@@ -21,6 +21,7 @@
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/silkscreen": "^0.4.2",
+    "@react-native-cookies/cookies": "^6.2.1",
     "@supabase/supabase-js": "^2.117.2",
     "expo": "~57.0.24",
     "expo-background-task": "~57.0.21",
@@ -45,7 +46,8 @@
     "react-native-screens": "~4.26.0",
     "react-native-svg": "^15.15.5",
     "react-native-url-polyfill": "^4.0.0",
-    "react-native-web": "~0.21.0"
+    "react-native-web": "~0.21.0",
+    "react-native-webview": "13.16.1"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",

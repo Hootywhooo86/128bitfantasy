@@ -22,6 +22,8 @@ export type EspnPlayer = {
   proTeamId: number;
   injuryStatus?: string;
   injured?: boolean;
+  /** Lineup slot ids this player may fill. */
+  eligibleSlots?: number[];
   /** statSourceId 1 = projected, statSplitTypeId 1 = one scoring period. */
   stats?: { statSourceId?: number; statSplitTypeId?: number; scoringPeriodId?: number; appliedTotal?: number }[];
 };

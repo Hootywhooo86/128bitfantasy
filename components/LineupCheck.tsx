@@ -1,10 +1,13 @@
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card, CardHead } from '@/components/ui';
 import { colors, fonts, themedStyles } from '@/lib/theme';
 import { providerLabel } from '@/src/providers/http';
 import { teamUrl } from '@/src/providers/links';
+import { espnStart } from '@/src/providers/espn/write';
+import { getConnection } from '@/lib/storage/connections';
+import type { Connection } from '@/src/providers/types';
 import type { LineupIssue } from '@/src/sports/lineup-check';
 import type { League } from '@/src/sports/models';
 
@@ -12,8 +15,44 @@ import type { League } from '@/src/sports/models';
  * Lineup problems for the team on screen, each with its healthy bench
  * options, and one button to fix it in the provider's own app.
  */
-export function LineupCheck({ league, teamId, issues, mine }: { league: League; teamId: string; issues: LineupIssue[]; mine: boolean }) {
+export function LineupCheck({
+  league,
+  teamId,
+  issues,
+  mine,
+  onChanged,
+}: {
+  league: League;
+  teamId: string;
+  issues: LineupIssue[];
+  mine: boolean;
+  /** Called after a lineup change was made from here, to re-read the league. */
+  onChanged?: () => void;
+}) {
   const router = useRouter();
+  // ESPN in READ & WRITE: the fix can happen right here.
+  const [espn, setEspn] = useState<Extract<Connection, { provider: 'espn' }> | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    if (league.provider !== 'espn' || !mine) return;
+    getConnection('espn').then((c) => setEspn(c?.write ? c : null), () => undefined);
+  }, [league.provider, mine]);
+  const canWrite = !!espn && mine;
+  const start = async (issue: LineupIssue, inId: string, name: string) => {
+    if (!espn) return;
+    setBusy(inId);
+    setResult(null);
+    try {
+      await espnStart(espn, league, teamId, inId, issue.player?.id ?? null, issue.slot);
+      setResult({ ok: true, text: `${name} is in your lineup on ESPN.` });
+      onChanged?.();
+    } catch (e) {
+      setResult({ ok: false, text: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(null);
+    }
+  };
   const hosted = league.provider === 'bit128';
   const open = () =>
     hosted
@@ -44,11 +83,25 @@ export function LineupCheck({ league, teamId, issues, mine }: { league: League; 
                 ? `Healthy bench options: ${i.options.map((o) => o.name).join(', ')}`
                 : 'No healthy bench player fits this slot — check waivers.'}
             </Text>
+            {canWrite && i.options.length ? (
+              <View style={st.starts}>
+                {i.options.map((o) => (
+                  <Pressable key={o.id} style={st.start} onPress={() => start(i, o.id, o.name)} disabled={!!busy}>
+                    <Text style={st.startT}>{busy === o.id ? '…' : `START ${o.name.toUpperCase()}`}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
           </View>
         </View>
       ))}
       {mine ? <FixButton label={hosted ? 'FIX MY LINEUP' : `FIX IN ${where.toUpperCase()} ↗`} onPress={open} /> : null}
-      {hosted ? null : <Text style={st.note}>This app is read-only — the fix happens in {where}.</Text>}
+      {result ? <Text style={[st.note, { color: result.ok ? colors.win : colors.loss }]}>{result.text}</Text> : null}
+      {hosted ? null : canWrite ? (
+        <Text style={st.note}>ESPN READ & WRITE is on (unofficial). If a change fails, make it on ESPN.</Text>
+      ) : (
+        <Text style={st.note}>This app is read-only for {where} — the fix happens there.</Text>
+      )}
     </Card>
   );
 }
@@ -73,5 +126,8 @@ const st = themedStyles(() =>
     btnT: { fontFamily: fonts.pixel, fontSize: 9.5, color: colors.onAccent, letterSpacing: 1 },
     btnTQuiet: { color: colors.text },
     note: { fontSize: 11.5, color: colors.textDim, marginTop: 8, fontFamily: fonts.body },
+    starts: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+    start: { borderWidth: 1, borderColor: colors.accent, borderRadius: 7, paddingVertical: 7, paddingHorizontal: 10 },
+    startT: { fontFamily: fonts.pixel, fontSize: 7.5, color: colors.accent, letterSpacing: 0.6 },
   })
 );

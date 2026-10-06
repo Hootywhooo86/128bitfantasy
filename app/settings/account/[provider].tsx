@@ -1,13 +1,16 @@
 import * as Clipboard from 'expo-clipboard';
 import { getRandomBytes } from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { espnLoginSupported } from '@/components/EspnLoginView';
 import { Button, Card, CardHead, Chips, Field, Label, Note, Screen } from '@/components/ui';
 import { sanitizeApiKey } from '@/lib/api-key';
 import { describeNetworkFailure } from '@/lib/net-errors';
 import { lastHealth } from '@/lib/storage/health';
+import { getJsonItem, removeItem } from '@/lib/storage/kv';
+import { ESPN_LOGIN_KEY, type EspnLoginResult } from '@/src/providers/espn/login';
 import { colors, fonts, themedStyles } from '@/lib/theme';
 import type { Health } from '@/src/providers/health';
 import { accessLabel, PROVIDER_INFO } from '@/src/providers/info';
@@ -46,11 +49,25 @@ export default function Account() {
     leagueIds: '',
     espnS2: '',
     swid: '',
+    write: false,
     userSecretId: '',
     franchiseId: '',
     sport: 'nfl' as Sport,
   });
   const set = (k: keyof typeof f) => (v: string) => setF((x) => ({ ...x, [k]: v }));
+
+  // Coming back from the in-app ESPN sign-in: fill in the two cookies it got.
+  useFocusEffect(
+    useCallback(() => {
+      if (provider !== 'espn') return;
+      getJsonItem<EspnLoginResult>(ESPN_LOGIN_KEY).then((r) => {
+        if (!r) return;
+        removeItem(ESPN_LOGIN_KEY).catch(() => undefined);
+        setF((x) => ({ ...x, espnS2: r.espnS2, swid: r.swid }));
+        setInfo('Signed in to ESPN. Add your league IDs, then tap the button at the bottom.');
+      });
+    }, [provider])
+  );
 
   useEffect(() => {
     lastHealth().then((r) => setHealth(r?.results[provider] ?? null));
@@ -64,7 +81,14 @@ export default function Account() {
         setF((x) => ({ ...x, leagueIds: c.leagues.map((l) => l.id).join(', '), franchiseId: c.leagues[0]?.franchiseId ?? '' }));
       if (c.provider === 'fantrax') setF((x) => ({ ...x, userSecretId: c.userSecretId ?? '', leagueIds: c.leagueIds.join(', ') }));
       if (c.provider === 'espn')
-        setF((x) => ({ ...x, leagueIds: c.leagues.map((l) => l.id).join(', '), sport: c.leagues[0]?.sport ?? 'nfl', espnS2: c.espnS2 ?? '', swid: c.swid ?? '' }));
+        setF((x) => ({
+          ...x,
+          leagueIds: c.leagues.map((l) => l.id).join(', '),
+          sport: c.leagues[0]?.sport ?? 'nfl',
+          espnS2: c.espnS2 ?? '',
+          swid: c.swid ?? '',
+          write: !!c.write,
+        }));
     });
   }, [provider]);
 
@@ -86,6 +110,7 @@ export default function Account() {
           leagues: [...prev, ...ids.map((id) => ({ id, sport: f.sport }))],
           espnS2: f.espnS2.trim() || null,
           swid: f.swid.trim() || null,
+          write: f.write && !!f.espnS2.trim() && !!f.swid.trim(),
         };
       }
       case 'mfl': {
@@ -200,13 +225,49 @@ export default function Account() {
             placeholder="12345678"
             hint="The leagueId= number in your league's URL. Separate several with commas."
           />
-          <Field label="ESPN_S2 (PRIVATE LEAGUES)" value={f.espnS2} onChangeText={set('espnS2')} secureTextEntry placeholder="optional" />
+          {espnLoginSupported ? (
+            <>
+              <Button
+                label={f.espnS2 && f.swid ? 'SIGNED IN · SIGN IN AGAIN' : 'SIGN IN WITH ESPN'}
+                kind={f.espnS2 && f.swid ? 'ghost' : 'primary'}
+                onPress={() => router.push('/settings/espn-login')}
+              />
+              <Text style={st.small}>
+                Opens ESPN&apos;s own sign-in. Needed for private leagues; also tells us which team is yours. Your password goes to ESPN only.
+              </Text>
+            </>
+          ) : null}
+          <Label>ACCESS</Label>
+          <Chips
+            items={[
+              { id: 'read', label: 'READ ONLY' },
+              { id: 'write', label: 'READ & WRITE' },
+            ]}
+            value={f.write ? 'write' : 'read'}
+            onChange={(v) => {
+              if (v === 'read') return setF((x) => ({ ...x, write: false }));
+              Alert.alert(
+                'Turn on ESPN lineup changes?',
+                "ESPN has no official API for this. The app sends the same request ESPN's website does, with your login. It can stop working any week without notice, and ESPN's terms don't allow automated access to your account — use it at your own risk. You can switch back to READ ONLY any time.",
+                [
+                  { text: 'Keep read only', style: 'cancel' },
+                  { text: 'Turn on', style: 'destructive', onPress: () => setF((x) => ({ ...x, write: true })) },
+                ]
+              );
+            }}
+          />
+          <Text style={st.small}>
+            {f.write
+              ? 'READ & WRITE: Lineup Check can start your bench players for you. Needs ESPN sign-in. Unofficial — if a change fails, make it on espn.com.'
+              : 'READ ONLY: the app never changes anything on ESPN. Lineup fixes open espn.com.'}
+          </Text>
+          <Field label="ESPN_S2 (OR SIGN IN ABOVE)" value={f.espnS2} onChangeText={set('espnS2')} secureTextEntry placeholder="optional" />
           <Field
-            label="SWID (PRIVATE LEAGUES)"
+            label="SWID (OR SIGN IN ABOVE)"
             value={f.swid}
             onChangeText={set('swid')}
             placeholder="{XXXXXXXX-XXXX-…}"
-            hint="Sign in at espn.com on a computer → DevTools → Application → Cookies → espn.com. Copy espn_s2 and SWID. SWID also tells us which team is yours."
+            hint="By hand: sign in at espn.com on a computer → DevTools → Application → Cookies → espn.com. Copy espn_s2 and SWID."
           />
         </Card>
       )}
@@ -358,5 +419,6 @@ const st = themedStyles(() =>
     health: { fontFamily: fonts.pixel, fontSize: 7.5, letterSpacing: 0.8, marginTop: 14, lineHeight: 13 },
     checkLine: { fontSize: 13, fontFamily: fonts.bodySemi, marginTop: 8, lineHeight: 19 },
     checkDetail: { color: colors.textMuted, fontFamily: fonts.body },
+    small: { fontSize: 12, color: colors.textDim, fontFamily: fonts.body, marginTop: 8, lineHeight: 17 },
   })
 );

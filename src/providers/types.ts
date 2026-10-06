@@ -30,6 +30,11 @@ export type Connection =
       /** Private leagues only. */
       espnS2: string | null;
       swid: string | null;
+      /**
+       * READ & WRITE: the user switched on unofficial lineup changes, having
+       * been told ESPN doesn't support them. Off (read only) by default.
+       */
+      write?: boolean;
     }
   | { provider: 'fleaflicker'; email: string; sport: Sport[] }
   | {

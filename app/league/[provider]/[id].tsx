@@ -128,7 +128,7 @@ export default function LeagueScreen() {
         <Note>We couldn&apos;t tell which team is yours here. Tap your team in the standings, or pick it in Settings → My Teams.</Note>
       )}
 
-      {focusId ? <LineupCheck league={league} teamId={focusId} issues={issues} mine={isMine} /> : null}
+      {focusId ? <LineupCheck league={league} teamId={focusId} issues={issues} mine={isMine} onChanged={() => refresh(true)} /> : null}
 
       {m && mine ? <MatchupCard snap={snap} mine={mine} opp={opp} onOpen={setViewing} /> : null}
 
