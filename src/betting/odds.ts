@@ -144,13 +144,16 @@ export function gameForTeam(games: GameOdds[], espnTeamId: string | null): GameO
  * Different providers spell team abbreviations differently (WAS / WSH,
  * JAC / JAX, KCC / KC). The game for a team abbreviation, with those folded.
  */
-const NFL_ALIASES: Record<string, string> = {
-  WAS: 'WSH', JAC: 'JAX', KCC: 'KC', GBP: 'GB', NEP: 'NE', NOS: 'NO', SFO: 'SF', TBB: 'TB', LVR: 'LV', OAK: 'LV', SD: 'LAC', STL: 'LAR', LA: 'LAR',
+const ALIASES: Record<Sport, Record<string, string>> = {
+  nfl: { WAS: 'WSH', JAC: 'JAX', KCC: 'KC', GBP: 'GB', NEP: 'NE', NOS: 'NO', SFO: 'SF', TBB: 'TB', LVR: 'LV', OAK: 'LV', SD: 'LAC', STL: 'LAR', LA: 'LAR' },
+  nhl: { LAK: 'LA', NJD: 'NJ', SJS: 'SJ', TBL: 'TB', UTA: 'UTAH', MON: 'MTL', WAS: 'WSH', CLS: 'CBJ', VEG: 'VGK', NAS: 'NSH', ARI: 'UTAH' },
+  nba: { GSW: 'GS', NYK: 'NY', SAS: 'SA', NOP: 'NO', NOR: 'NO', UTA: 'UTAH', WAS: 'WSH', PHO: 'PHX', BRK: 'BKN', BRO: 'BKN', CHO: 'CHA', GOS: 'GS', SAN: 'SA' },
+  mlb: { CWS: 'CHW', OAK: 'ATH', AZ: 'ARI', KCR: 'KC', SDP: 'SD', SFG: 'SF', TBR: 'TB', WSN: 'WSH', WAS: 'WSH', ANA: 'LAA', NYA: 'NYY', NYN: 'NYM', SLN: 'STL', CHN: 'CHC', CHA: 'CHW', LAN: 'LAD', TBD: 'TB' },
 };
 export function gameForAbbr(games: GameOdds[], abbr: string | null, sport: Sport): GameOdds | null {
   if (!abbr) return null;
   const a = abbr.toUpperCase();
-  const want = sport === 'nfl' ? NFL_ALIASES[a] ?? a : a;
+  const want = ALIASES[sport][a] ?? a;
   return games.find((g) => g.home.abbr.toUpperCase() === want || g.away.abbr.toUpperCase() === want) ?? null;
 }
 

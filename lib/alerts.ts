@@ -7,6 +7,7 @@
  */
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
+import { slateOdds } from '@/lib/odds';
 import { addEvents } from '@/lib/storage/feed';
 import { getString, setString } from '@/lib/storage/kv';
 import { currentPrefs, loadPrefs } from '@/lib/storage/prefs';
@@ -79,10 +80,23 @@ export function startAlerts(): void {
     await loadPrefs();
     const prefs = currentPrefs();
     if (prefs.hidden.includes(leagueKey(next.league))) return;
-    const events = deriveEvents(prev ? snapshotWithPrefs(prev, prefs) : null, snapshotWithPrefs(next, prefs));
+    // The scoreboard says who plays today; without it, bench alerts just skip.
+    const games = await slateOdds(next.league.sport).catch(() => []);
+    const events = deriveEvents(prev ? snapshotWithPrefs(prev, prefs) : null, snapshotWithPrefs(next, prefs), Date.now(), games);
     const fresh = await addEvents(events);
     if (!alertsSupported || !fresh.length || !(await alertsEnabled())) return;
-    for (const e of fresh.filter(shouldNotify)) await notify(e);
+    const loud = fresh.filter(shouldNotify);
+    for (const e of loud.filter((x) => x.type !== 'lineup.bench')) await notify(e);
+    // Several bench players at once: one buzz for the league, not one each.
+    const bench = loud.filter((x) => x.type === 'lineup.bench');
+    if (bench.length === 1) await notify(bench[0]);
+    else if (bench.length > 1) {
+      await notify({
+        ...bench[0],
+        title: `${bench.length} bench players play while starting spots sit idle`,
+        body: `${bench[0].league.name}: ${bench.map((b) => b.title.replace(/^Bench: (.*) plays (.*)$/, '$1 ($2)')).join(', ')}`,
+      });
+    }
   });
 }
 

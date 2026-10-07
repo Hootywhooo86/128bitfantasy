@@ -7,6 +7,7 @@ import { MatchupCard } from '@/components/MatchupCard';
 import { RosterList } from '@/components/RosterList';
 import { Card, Empty, Label, Note, Screen } from '@/components/ui';
 import { describeNetworkFailure } from '@/lib/net-errors';
+import { useSlate } from '@/lib/odds';
 import { usePrefs } from '@/lib/storage/prefs';
 import { colors, fonts, themedStyles } from '@/lib/theme';
 import { providerLabel } from '@/src/providers/http';
@@ -19,7 +20,7 @@ import {
   type LeagueSnapshot,
   type ProviderId,
 } from '@/src/sports/models';
-import { lineupIssues } from '@/src/sports/lineup-check';
+import { benchStarts, lineupIssues } from '@/src/sports/lineup-check';
 import { snapshotWithPrefs } from '@/src/sports/prefs';
 
 /**
@@ -75,6 +76,9 @@ export default function LeagueScreen() {
     });
   }, [provider, id, refresh]);
 
+  // Who plays today: for the "on your bench while a spot sits idle" check.
+  const games = useSlate(raw?.league.sport, raw?.fetchedAt);
+
   if (!raw) {
     return (
       <Screen section="Team" back onRefresh={() => refresh()} refreshing={loading}>
@@ -94,6 +98,7 @@ export default function LeagueScreen() {
   const [mine, opp] = m ? sides(m, focusId) : [null, null];
   const problems = snapshotProblems(snap);
   const issues = lineupIssues(roster, league.sport);
+  const bench = isMine ? benchStarts(roster, league.sport, games) : [];
 
   return (
     <Screen section={`${league.sport.toUpperCase()} · ${providerLabel(league.provider)}`} back onRefresh={() => refresh()} refreshing={loading}>
@@ -128,7 +133,7 @@ export default function LeagueScreen() {
         <Note>We couldn&apos;t tell which team is yours here. Tap your team in the standings, or pick it in Settings → My Teams.</Note>
       )}
 
-      {focusId ? <LineupCheck league={league} teamId={focusId} issues={issues} mine={isMine} onChanged={() => refresh(true)} /> : null}
+      {focusId ? <LineupCheck league={league} teamId={focusId} issues={issues} bench={bench} mine={isMine} onChanged={() => refresh(true)} /> : null}
 
       {m && mine ? <MatchupCard snap={snap} mine={mine} opp={opp} onOpen={setViewing} /> : null}
 

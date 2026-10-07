@@ -1,5 +1,14 @@
 # Changelog
 
+## Bench alerts — every sport, every provider
+
+- **"Bench: Zach Hyman plays 7:00 PM"** — a notification when a bench player's team plays today (this week in football) while a spot they fit sits idle: empty, held by a starter with no game or on a bye, or held by someone ruled out. Several at once arrive as one notification per league; each player alerts once per game.
+- The same suggestions show in **LINEUP CHECK** on your team screen; with ESPN READ & WRITE on, START puts them in.
+- ESPN hockey, basketball and baseball rosters now show each player's team and game time (they only did for football).
+- Team codes from every provider match the scoreboard (LAK/LA, GSW/GS, CWS/CHW…), so game times show for more players.
+
+Turn on Settings → GAME-DAY ALERTS to get them with the app closed.
+
 ## 128BIT LEAGUES — four sports, every league type
 
 Host your own league in the app, in a free Supabase project you own (setup: `supabase/README.md`).

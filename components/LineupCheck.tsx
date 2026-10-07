@@ -8,7 +8,8 @@ import { teamUrl } from '@/src/providers/links';
 import { espnStart } from '@/src/providers/espn/write';
 import { getConnection } from '@/lib/storage/connections';
 import type { Connection } from '@/src/providers/types';
-import type { LineupIssue } from '@/src/sports/lineup-check';
+import { gameTime } from '@/src/sports/events';
+import type { BenchStart, LineupIssue } from '@/src/sports/lineup-check';
 import type { League } from '@/src/sports/models';
 
 /**
@@ -19,12 +20,15 @@ export function LineupCheck({
   league,
   teamId,
   issues,
+  bench = [],
   mine,
   onChanged,
 }: {
   league: League;
   teamId: string;
   issues: LineupIssue[];
+  /** Bench players with a game to come while a spot they fit sits idle. */
+  bench?: BenchStart[];
   mine: boolean;
   /** Called after a lineup change was made from here, to re-read the league. */
   onChanged?: () => void;
@@ -39,12 +43,12 @@ export function LineupCheck({
     getConnection('espn').then((c) => setEspn(c?.write ? c : null), () => undefined);
   }, [league.provider, mine]);
   const canWrite = !!espn && mine;
-  const start = async (issue: LineupIssue, inId: string, name: string) => {
+  const start = async (outId: string | null, slot: string, inId: string, name: string) => {
     if (!espn) return;
     setBusy(inId);
     setResult(null);
     try {
-      await espnStart(espn, league, teamId, inId, issue.player?.id ?? null, issue.slot);
+      await espnStart(espn, league, teamId, inId, outId, slot);
       setResult({ ok: true, text: `${name} is in your lineup on ESPN.` });
       onChanged?.();
     } catch (e) {
@@ -60,7 +64,7 @@ export function LineupCheck({
       : Linking.openURL(teamUrl(league, teamId)).catch(() => undefined);
   const where = providerLabel(league.provider);
 
-  if (!issues.length) {
+  if (!issues.length && !bench.length) {
     return mine ? (
       <Card>
         <CardHead title="LINEUP CHECK" note="All clear" />
@@ -72,7 +76,7 @@ export function LineupCheck({
 
   return (
     <Card style={{ borderColor: issues.some((i) => i.severity === 'bad') ? colors.loss : colors.warn }}>
-      <CardHead title="LINEUP CHECK" note={`${issues.length} to look at`} />
+      <CardHead title="LINEUP CHECK" note={`${issues.length + bench.length} to look at`} />
       {issues.map((i) => (
         <View key={`${i.slot}-${i.player?.id ?? 'empty'}`} style={st.row}>
           <Text style={[st.dot, { color: i.severity === 'bad' ? colors.loss : colors.warn }]}>●</Text>
@@ -86,10 +90,26 @@ export function LineupCheck({
             {canWrite && i.options.length ? (
               <View style={st.starts}>
                 {i.options.map((o) => (
-                  <Pressable key={o.id} style={st.start} onPress={() => start(i, o.id, o.name)} disabled={!!busy}>
+                  <Pressable key={o.id} style={st.start} onPress={() => start(i.player?.id ?? null, i.slot, o.id, o.name)} disabled={!!busy}>
                     <Text style={st.startT}>{busy === o.id ? '…' : `START ${o.name.toUpperCase()}`}</Text>
                   </Pressable>
                 ))}
+              </View>
+            ) : null}
+          </View>
+        </View>
+      ))}
+      {bench.map((b) => (
+        <View key={`bench-${b.player.id}`} style={st.row}>
+          <Text style={[st.dot, { color: colors.warn }]}>●</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={st.msg}>{`${b.slot}: ${b.player.name} plays ${gameTime(b.game.startsAt)}`}</Text>
+            <Text style={st.opts}>{`On the bench while ${b.why}.`}</Text>
+            {canWrite ? (
+              <View style={st.starts}>
+                <Pressable style={st.start} onPress={() => start(b.replaces?.id ?? null, b.slot, b.player.id, b.player.name)} disabled={!!busy}>
+                  <Text style={st.startT}>{busy === b.player.id ? '…' : `START ${b.player.name.toUpperCase()}`}</Text>
+                </Pressable>
               </View>
             ) : null}
           </View>

@@ -9,11 +9,12 @@
  * Wins come from the record changing, not from comparing scores: a score read
  * mid-game is not a result, but a win added to the record is.
  */
-import { lineupIssues, type LineupIssue } from './lineup-check';
+import type { GameOdds } from '@/src/betting/odds';
+import { benchStarts, lineupIssues, type LineupIssue } from './lineup-check';
 import type { League, LeagueSnapshot, Team } from './models';
 import { leagueKey } from './prefs';
 
-export type FantasyEventType = 'matchup.won' | 'matchup.lost' | 'matchup.tied' | 'lineup.problem' | 'lineup.fixed';
+export type FantasyEventType = 'matchup.won' | 'matchup.lost' | 'matchup.tied' | 'lineup.problem' | 'lineup.fixed' | 'lineup.bench';
 
 export type FantasyEvent = {
   /** Stable: the same change always produces the same id. */
@@ -35,7 +36,19 @@ function leagueRef(l: League): FantasyEvent['league'] {
 
 const issueId = (i: LineupIssue) => `${i.slot}:${i.player?.id ?? 'empty'}:${i.severity}`;
 
-export function deriveEvents(prev: LeagueSnapshot | null, next: LeagueSnapshot, now = Date.now()): FantasyEvent[] {
+/** "7:00 PM" in the phone's time, or "Sun 1:00 PM" when it isn't today. */
+export function gameTime(iso: string, now = Date.now()): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date(now).toDateString() === d.toDateString();
+  return d.toLocaleString([], today ? { hour: 'numeric', minute: '2-digit' } : { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * `games` is this sport's scoreboard (today's games; the week's in football).
+ * Without it there are no bench alerts — the rest still works.
+ */
+export function deriveEvents(prev: LeagueSnapshot | null, next: LeagueSnapshot, now = Date.now(), games: GameOdds[] = []): FantasyEvent[] {
   const me = next.league.myTeamId;
   if (!me) return [];
   const key = leagueKey(next.league);
@@ -84,6 +97,20 @@ export function deriveEvents(prev: LeagueSnapshot | null, next: LeagueSnapshot, 
         : `${next.league.name}: no healthy bench player fits — check waivers`,
     });
   }
+  // Bench players with a game to come while a spot they fit sits idle. One
+  // event per player per game, so the same chance never buzzes twice.
+  for (const b of benchStarts(roster(next), next.league.sport, games)) {
+    const vs = b.game.home.abbr.toUpperCase() === (b.player.proTeam ?? '').toUpperCase() ? `vs ${b.game.away.abbr}` : `at ${b.game.home.abbr}`;
+    out.push({
+      ...base,
+      id: `${key}:${me}:bench:${b.game.eventId}:${b.player.id}`,
+      type: 'lineup.bench',
+      period: next.period,
+      title: `Bench: ${b.player.name} plays ${gameTime(b.game.startsAt, now)}`,
+      body: `${next.league.name}: ${b.player.name} (${[b.player.position, b.player.proTeam].filter(Boolean).join(' · ')}) ${vs} is sitting — ${b.why} (${b.slot}). Start them?`,
+    });
+  }
+
   if (prev && was.size > 0 && nowIssues.length === 0) {
     out.push({
       ...base,

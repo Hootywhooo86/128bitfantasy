@@ -29,6 +29,30 @@ const NFL_TEAMS: Record<number, string> = {
   33: 'BAL', 34: 'HOU',
 };
 
+/**
+ * ESPN fantasy pro-team ids are ESPN's own team ids, so these abbreviations
+ * match its scoreboard — which is how a player's game time is found.
+ */
+const PRO_TEAMS: Record<Sport, Record<number, string>> = {
+  nfl: NFL_TEAMS,
+  nhl: {
+    1: 'BOS', 2: 'BUF', 3: 'CGY', 4: 'CHI', 5: 'DET', 6: 'EDM', 7: 'CAR', 8: 'LA', 9: 'DAL', 10: 'MTL',
+    11: 'NJ', 12: 'NYI', 13: 'NYR', 14: 'OTT', 15: 'PHI', 16: 'PIT', 17: 'COL', 18: 'SJ', 19: 'STL', 20: 'TB',
+    21: 'TOR', 22: 'VAN', 23: 'WSH', 25: 'ANA', 26: 'FLA', 27: 'NSH', 28: 'WPG', 29: 'CBJ', 30: 'MIN', 37: 'VGK',
+    124292: 'SEA', 129764: 'UTAH',
+  },
+  nba: {
+    1: 'ATL', 2: 'BOS', 3: 'NO', 4: 'CHI', 5: 'CLE', 6: 'DAL', 7: 'DEN', 8: 'DET', 9: 'GS', 10: 'HOU',
+    11: 'IND', 12: 'LAC', 13: 'LAL', 14: 'MIA', 15: 'MIL', 16: 'MIN', 17: 'BKN', 18: 'NY', 19: 'ORL', 20: 'PHI',
+    21: 'PHX', 22: 'POR', 23: 'SAC', 24: 'SA', 25: 'OKC', 26: 'UTAH', 27: 'WSH', 28: 'TOR', 29: 'MEM', 30: 'CHA',
+  },
+  mlb: {
+    1: 'BAL', 2: 'BOS', 3: 'LAA', 4: 'CHW', 5: 'CLE', 6: 'DET', 7: 'KC', 8: 'MIL', 9: 'MIN', 10: 'NYY',
+    11: 'ATH', 12: 'SEA', 13: 'TEX', 14: 'TOR', 15: 'ATL', 16: 'CHC', 17: 'CIN', 18: 'HOU', 19: 'LAD', 20: 'WSH',
+    21: 'NYM', 22: 'PHI', 23: 'PIT', 24: 'STL', 25: 'SD', 26: 'SF', 27: 'COL', 28: 'MIA', 29: 'ARI', 30: 'TB',
+  },
+};
+
 function slotKind(label: string | undefined): Slot {
   if (label === 'BN') return 'bench';
   if (label === 'IR' || label === 'IL') return 'ir';
@@ -120,7 +144,7 @@ export function toEspnRosters(raw: EspnLeague, sport: Sport): Roster[] {
         position: p ? POSITIONS[sport][p.defaultPositionId] ?? null : null,
         lineupSlot,
         slot: slotKind(lineupSlot),
-        proTeam: p && sport === 'nfl' ? NFL_TEAMS[p.proTeamId] ?? null : null,
+        proTeam: p ? PRO_TEAMS[sport][p.proTeamId] ?? null : null,
         injury: injury && injury !== 'ACTIVE' && injury !== 'NORMAL' ? injury.replace(/_/g, ' ') : null,
         projected: espnProjection(p, raw.scoringPeriodId),
         points: espnPoints(p, raw.scoringPeriodId),

@@ -6,6 +6,7 @@
  * is healthy and allowed in that slot. Picking between them is Coaches
  * Corner's job.
  */
+import { gameState, type GameOdds } from '@/src/betting/odds';
 import type { Roster, RosterPlayer, Sport } from './models';
 
 export type InjuryLevel = 'out' | 'doubtful' | 'questionable';
@@ -122,4 +123,66 @@ export function issueSummary(issues: LineupIssue[]): { text: string; severity: '
   const bad = issues.filter((i) => i.severity === 'bad').length;
   if (bad) return { text: `${bad} LINEUP PROBLEM${bad === 1 ? '' : 'S'}`, severity: 'bad' };
   return { text: `${issues.length} QUESTIONABLE STARTER${issues.length === 1 ? '' : 'S'}`, severity: 'warn' };
+}
+
+/** A bench player with a game still to come, and a starting spot that would let them play. */
+export type BenchStart = {
+  player: RosterPlayer;
+  game: GameOdds;
+  slot: string;
+  /** Who sits instead: a starter with no game (or ruled out), or null for an empty slot. */
+  replaces: RosterPlayer | null;
+  why: string;
+};
+
+/** Specific slots before flex ones, so "UTIL" isn't spent on someone a "C" slot could take. */
+const flexiness = (slot: string, sport: Sport) => (FLEX[sport][slot.toUpperCase()] ? 1 : 0);
+
+/**
+ * Bench players whose team plays in this slate while a starting spot they
+ * fit sits idle: empty, or held by someone with no game (a bye in football,
+ * an off day elsewhere) or ruled out. Needs the scoreboard: with no slate,
+ * or no pro team to look up, it says nothing rather than guess.
+ */
+export function benchStarts(roster: Roster | undefined, sport: Sport, games: GameOdds[]): BenchStart[] {
+  if (!roster || !games.length) return [];
+  const state = (p: RosterPlayer) => gameState(games, p.proTeam, sport);
+  const ready = roster.players
+    .filter((p) => p.slot === 'bench' && p.proTeam)
+    .filter((p) => {
+      const lvl = injuryLevel(p.injury);
+      return lvl !== 'out' && lvl !== 'doubtful';
+    })
+    .map((p) => ({ p, g: state(p) }))
+    .filter((x) => x.g.state === 'pre' && x.g.game)
+    .sort((a, b) => a.g.game!.startsAt.localeCompare(b.g.game!.startsAt));
+
+  const open: { slot: string; replaces: RosterPlayer | null; why: string }[] = (roster.emptySlots ?? []).map((slot) => ({
+    slot,
+    replaces: null,
+    why: `empty ${slot} slot`,
+  }));
+  for (const p of roster.players) {
+    if (p.slot !== 'starter' || !p.lineupSlot) continue;
+    if (injuryLevel(p.injury) === 'out') {
+      open.push({ slot: p.lineupSlot, replaces: p, why: `${p.name} is out` });
+      continue;
+    }
+    if (!p.proTeam) continue;
+    const s = state(p).state;
+    if (s === 'bye') open.push({ slot: p.lineupSlot, replaces: p, why: `${p.name} is on a bye` });
+    // Daily sports: the slate is today's games, so a known team that isn't in it is off today.
+    else if (s === 'unknown' && sport !== 'nfl') open.push({ slot: p.lineupSlot, replaces: p, why: `${p.name} has no game` });
+  }
+  open.sort((a, b) => flexiness(a.slot, sport) - flexiness(b.slot, sport));
+
+  const used = new Set<string>();
+  const out: BenchStart[] = [];
+  for (const o of open) {
+    const pick = ready.find((x) => !used.has(x.p.id) && slotAccepts(o.slot, x.p.position, sport));
+    if (!pick) continue;
+    used.add(pick.p.id);
+    out.push({ player: pick.p, game: pick.g.game!, slot: o.slot, replaces: o.replaces, why: o.why });
+  }
+  return out;
 }
