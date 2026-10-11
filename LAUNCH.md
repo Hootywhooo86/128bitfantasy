@@ -14,6 +14,7 @@ Today, each league would need its own Supabase project. For the public, run one 
 4. **Set up email.** Supabase's built-in email sends only a few messages an hour.
    - Go to Authentication → Emails → SMTP Settings and add a free sender, such as Resend (3,000 emails a month free) or Brevo.
    - In Emails, edit both **Magic Link** and **Confirm signup** and add `Your code: {{ .Token }}` so people get a 6-digit code. Without it they get a `localhost:3000` link that doesn't open on a phone.
+   - In URL Configuration, set **Site URL** to `bitfantasy://auth` so any emailed link opens the app and signs in.
 5. **Bake the server into the app.** In GitHub, go to the repo → Settings → Secrets and variables → Actions → **Variables** and add:
    - `SUPABASE_URL` = the Project URL.
    - `SUPABASE_PUBLISHABLE_KEY` = the publishable key. It is public by design. Never use the secret key here.

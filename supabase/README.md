@@ -18,7 +18,8 @@
 4. **Optional: email codes.** These let people keep their team when they change phones.
    - Go to **Authentication → Emails**. Edit both **Magic Link** and **Confirm signup** (first-time players get Confirm signup).
    - Add `Your code: {{ .Token }}` to each email body so it shows a 6-digit code.
-   - Without this the email has a link to `localhost:3000`, which doesn't open on a phone. The app also takes that link pasted into the code box, as long as nobody opened it first.
+   - Go to **Authentication → URL Configuration** and set **Site URL** to `bitfantasy://auth` (or add `bitfantasy://**` under Redirect URLs). Then a link in the email opens the app and signs in, instead of a dead `localhost:3000` page.
+   - The code box also takes a pasted link, or the address of the page a link opened.
    - Supabase's built-in email sends only a few messages an hour. If you need more, set up your own SMTP under **Authentication → Emails → SMTP Settings**.
 5. **Copy the connection details.**
    - Go to **Project Settings → API Keys**.

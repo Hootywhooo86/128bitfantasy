@@ -98,30 +98,76 @@ export async function signInQuick(): Promise<void> {
 
 export async function sendEmailCode(email: string): Promise<void> {
   const sb = await hosted();
-  must(await sb.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } }));
+  must(await sb.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true, emailRedirectTo: AUTH_REDIRECT } }));
 }
 
+/** Where the emailed sign-in link sends people: back into this app. */
+export const AUTH_REDIRECT = 'bitfantasy://auth';
+
+export type LinkResult =
+  | { kind: 'token'; tokenHash: string; type: 'email' | 'magiclink' | 'signup' }
+  | { kind: 'session'; accessToken: string; refreshToken: string }
+  | { kind: 'error'; message: string };
+
 /**
- * The token inside a Supabase sign-in link, when one is pasted instead of a
- * code: ".../auth/v1/verify?token=…&type=magiclink&redirect_to=http://localhost:3000".
- * A project that still has the default email template sends that link, and
- * opening it on a phone lands on a dead localhost page.
+ * What a pasted (or opened) sign-in link carries:
+ * - the email's own link, ".../auth/v1/verify?token=…&type=magiclink" — not yet used;
+ * - where that link lands after it's opened, "…#access_token=…&refresh_token=…"
+ *   (localhost:3000 on a project with the default Site URL, or this app);
+ * - or the error it lands on when it was already used.
+ * Gmail and other apps may wrap links in their own redirect, so the text is
+ * decoded until nothing changes.
  */
-export function linkToken(input: string): { tokenHash: string; type: 'email' | 'magiclink' | 'signup' } | null {
-  const m = input.trim().match(/[?&]token=([^&#\s]+)/);
-  if (!m) return null;
-  const t = input.match(/[?&]type=([a-z_]+)/)?.[1];
-  return { tokenHash: decodeURIComponent(m[1]), type: t === 'signup' || t === 'magiclink' ? t : 'email' };
+export function readAuthLink(input: string): LinkResult | null {
+  let s = input.trim();
+  for (let i = 0; i < 3; i++) {
+    try {
+      const d = decodeURIComponent(s);
+      if (d === s) break;
+      s = d;
+    } catch {
+      break;
+    }
+  }
+  const param = (k: string) => s.match(new RegExp(`[?&#]${k}=([^&#\\s]+)`))?.[1];
+  const access = param('access_token');
+  const refresh = param('refresh_token');
+  if (access && refresh) return { kind: 'session', accessToken: access, refreshToken: refresh };
+  const err = param('error_description') ?? param('error_code') ?? param('error');
+  if (err) {
+    const used = /expired|invalid|not.?found/i.test(err);
+    return {
+      kind: 'error',
+      message: used
+        ? 'That link was already used or has expired — each one works once. Tap EMAIL ME A CODE for a new one.'
+        : `Supabase said: ${err.replace(/\+/g, ' ')}`,
+    };
+  }
+  const token = param('token_hash') ?? param('token');
+  if (!token || !/verify|token_hash/.test(s)) return null;
+  const t = param('type');
+  return { kind: 'token', tokenHash: token, type: t === 'signup' || t === 'magiclink' ? t : 'email' };
+}
+
+/** Signs in from a link (pasted, or opened into the app). Throws the reason when it can't. */
+export async function signInFromLink(input: string): Promise<boolean> {
+  const r = readAuthLink(input);
+  if (!r) return false;
+  if (r.kind === 'error') throw new Error(r.message);
+  const sb = await hosted();
+  if (r.kind === 'session') must(await sb.auth.setSession({ access_token: r.accessToken, refresh_token: r.refreshToken }));
+  else must(await sb.auth.verifyOtp({ token_hash: r.tokenHash, type: r.type }));
+  return true;
 }
 
 export async function verifyEmailCode(email: string, code: string): Promise<void> {
-  const sb = await hosted();
-  const link = linkToken(code);
-  if (link) {
-    must(await sb.auth.verifyOtp({ token_hash: link.tokenHash, type: link.type }));
-    return;
+  if (await signInFromLink(code)) return;
+  const digits = code.replace(/\s+/g, '');
+  if (!/^\d{6,10}$/.test(digits)) {
+    throw new Error('Enter the 6-digit code from the email, or paste the whole link (or the address the link opened).');
   }
-  must(await sb.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' }));
+  const sb = await hosted();
+  must(await sb.auth.verifyOtp({ email: email.trim(), token: digits, type: 'email' }));
 }
 
 /** Who's signed in, in words. */

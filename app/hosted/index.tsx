@@ -148,8 +148,8 @@ export default function Hosted() {
                 value={f.code}
                 onChangeText={set('code')}
                 autoCapitalize="none"
-                placeholder="123456"
-                hint="Email has a link instead of a code? Don't open it — long-press it, copy, and paste it here."
+                placeholder="123456, or paste the link"
+                hint="Got a link instead of a code? Paste it here. Already opened it and got a page that won't load? Copy that page's address and paste it instead."
               />
               <Button
                 label="SIGN IN"
