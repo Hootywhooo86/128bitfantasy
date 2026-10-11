@@ -72,6 +72,9 @@ export function sbMessage(e: unknown): string {
     return 'This Supabase project has no 128BIT LEAGUES tables yet. Run supabase/schema.sql in its SQL Editor (see the setup steps).';
   }
   if (/Invalid API key|No API key/i.test(m)) return 'Supabase did not accept that key. Copy the publishable (anon) key again from Project Settings → API Keys.';
+  if (/expired|invalid/i.test(m) && /token|otp|link/i.test(m)) {
+    return 'That code or link has expired or was already used (opening the link uses it up). Tap EMAIL ME A CODE for a new one, and paste the link here without opening it.';
+  }
   if (/rate limit/i.test(m)) return 'Supabase is limiting emails right now (the free email service sends only a few an hour). Try quick sign-in, or wait and try again.';
   return m;
 }
@@ -98,8 +101,26 @@ export async function sendEmailCode(email: string): Promise<void> {
   must(await sb.auth.signInWithOtp({ email: email.trim(), options: { shouldCreateUser: true } }));
 }
 
+/**
+ * The token inside a Supabase sign-in link, when one is pasted instead of a
+ * code: ".../auth/v1/verify?token=…&type=magiclink&redirect_to=http://localhost:3000".
+ * A project that still has the default email template sends that link, and
+ * opening it on a phone lands on a dead localhost page.
+ */
+export function linkToken(input: string): { tokenHash: string; type: 'email' | 'magiclink' | 'signup' } | null {
+  const m = input.trim().match(/[?&]token=([^&#\s]+)/);
+  if (!m) return null;
+  const t = input.match(/[?&]type=([a-z_]+)/)?.[1];
+  return { tokenHash: decodeURIComponent(m[1]), type: t === 'signup' || t === 'magiclink' ? t : 'email' };
+}
+
 export async function verifyEmailCode(email: string, code: string): Promise<void> {
   const sb = await hosted();
+  const link = linkToken(code);
+  if (link) {
+    must(await sb.auth.verifyOtp({ token_hash: link.tokenHash, type: link.type }));
+    return;
+  }
   must(await sb.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: 'email' }));
 }
 

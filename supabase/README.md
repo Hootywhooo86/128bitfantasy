@@ -16,8 +16,9 @@
    - Turn on **Allow anonymous sign-ins**.
    - This lets friends join with no email.
 4. **Optional: email codes.** These let people keep their team when they change phones.
-   - Go to **Authentication → Emails → Magic Link**.
-   - Add `{{ .Token }}` to the email body so it shows a 6-digit code.
+   - Go to **Authentication → Emails**. Edit both **Magic Link** and **Confirm signup** (first-time players get Confirm signup).
+   - Add `Your code: {{ .Token }}` to each email body so it shows a 6-digit code.
+   - Without this the email has a link to `localhost:3000`, which doesn't open on a phone. The app also takes that link pasted into the code box, as long as nobody opened it first.
    - Supabase's built-in email sends only a few messages an hour. If you need more, set up your own SMTP under **Authentication → Emails → SMTP Settings**.
 5. **Copy the connection details.**
    - Go to **Project Settings → API Keys**.

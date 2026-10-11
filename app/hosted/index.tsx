@@ -143,7 +143,14 @@ export default function Hosted() {
           <Field label="EMAIL" value={f.email} onChangeText={set('email')} keyboardType="email-address" placeholder="you@example.com" />
           {f.codeSent ? (
             <>
-              <Field label="CODE FROM THE EMAIL" value={f.code} onChangeText={set('code')} keyboardType="number-pad" />
+              <Field
+                label="CODE FROM THE EMAIL"
+                value={f.code}
+                onChangeText={set('code')}
+                autoCapitalize="none"
+                placeholder="123456"
+                hint="Email has a link instead of a code? Don't open it — long-press it, copy, and paste it here."
+              />
               <Button
                 label="SIGN IN"
                 busy={busy === 'verify'}
@@ -164,7 +171,10 @@ export default function Hosted() {
               }
             />
           )}
-          <Note>Getting a link instead of a code? The commissioner adds {'{{ .Token }}'} to Supabase → Authentication → Emails → Magic Link.</Note>
+          <Note>
+            Commissioner: to send a 6-digit code instead of a link, add {'{{ .Token }}'} to both email templates in Supabase → Authentication →
+            Emails: Magic Link and Confirm signup (new players get Confirm signup).
+          </Note>
         </Card>
         <Button
           label="USE A DIFFERENT PROJECT"
