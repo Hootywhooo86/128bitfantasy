@@ -36,6 +36,18 @@ Scores are calculated on phones from public sports statistics (NHL, MLB, Sleeper
 - In leagues that haven't drafted yet, your team is removed.
 - In leagues that have started, your team stays, marked as left and with no owner, so the other members can finish the season.
 
+## 128bit family account (optional)
+
+Settings → **128bit family account** signs you in to the account shared by every 128bit app
+(Google, Apple, or email and password). Off until you sign in. While signed in, the app sends
+your **wins, losses, ties and lineup fixes** (the league's name and sport, the week, and the
+short text you see in the app) to that account, so they show on 128bit Tracker's timeline and
+in 128bitlife. Rosters, scores, players and your fantasy-site logins are not sent.
+
+It is stored in the 128bit family database, run by 128bit on Supabase. Only your account can
+read it. Signing out stops it. **Delete 128bit family account** on the same screen deletes the
+account and everything every 128bit app sent to it; your leagues are not affected.
+
 ## What the app does not do
 
 - No ads, and no advertising or tracking SDKs.
@@ -49,7 +61,7 @@ When you use them, the app talks to:
 - **Fantasy sites:** Sleeper, Yahoo, ESPN, MyFantasyLeague, Fantrax and Fleaflicker.
 - **Public stats sources:** the NHL, MLB, ESPN and Sleeper.
 - **The AI provider you pick.**
-- **Supabase**, for 128BIT LEAGUES.
+- **Supabase**, for 128BIT LEAGUES and the 128bit family account.
 
 Each has its own privacy policy.
 

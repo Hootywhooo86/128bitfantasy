@@ -185,3 +185,14 @@ regenerates `assets/brand/*` and `assets/images/*`.
 - Weekly recap card: best/worst start, shareable, pixel style.
 - Waiver claims and trades as feed events (needs each provider's transactions endpoint).
 - Share the AI client with 128BIT FIT as a package instead of a copy.
+
+## 128bit family account
+
+Settings → **128bit family account**: Continue with Google, Continue with Apple, or email,
+the same account as 128bitPlay, 128bitfit, 128bittrip and 128bit Tracker. Signed in, every
+refresh's wins, losses, ties and lineup fixes ([`lib/family-events.ts`](lib/family-events.ts))
+go to the family feed via [`lib/family.ts`](lib/family.ts) (outbox, offline-safe, nothing
+while signed out), so they show on Tracker's timeline and earn XP in 128bitlife. Lineup
+problems and bench nudges stay phone-only alerts. Separate from a 128BIT LEAGUES server's
+own sign-in. Google and Apple need `bitfantasy://auth-callback` in the family Supabase
+project's Redirect URLs. Feed schema: 128bittracker's `docs/EVENTS.md`.

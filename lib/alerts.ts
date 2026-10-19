@@ -2,12 +2,14 @@
  * Game-day alerts: a local notification when a refresh finds something new —
  * a starter ruled out, an empty slot, a win or a loss.
  *
- * Local only. Nothing is sent to a server; the phone notices the change when
- * it refreshes (on open, on pull, or in the background task) and tells you.
+ * The phone notices the change when it refreshes (on open, on pull, or in the
+ * background task) and tells you. Nothing else leaves the phone, except results
+ * when you're signed in to a 128bit family account (lib/family.ts).
  */
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import { slateOdds } from '@/lib/odds';
+import { sendToFamily } from '@/lib/family';
 import { addEvents } from '@/lib/storage/feed';
 import { getString, setString } from '@/lib/storage/kv';
 import { currentPrefs, loadPrefs } from '@/lib/storage/prefs';
@@ -84,6 +86,8 @@ export function startAlerts(): void {
     const games = await slateOdds(next.league.sport).catch(() => []);
     const events = deriveEvents(prev ? snapshotWithPrefs(prev, prefs) : null, snapshotWithPrefs(next, prefs), Date.now(), games);
     const fresh = await addEvents(events);
+    // Signed in to a 128bit family account: results reach Tracker's timeline and 128bitlife.
+    sendToFamily(fresh);
     if (!alertsSupported || !fresh.length || !(await alertsEnabled())) return;
     const loud = fresh.filter(shouldNotify);
     for (const e of loud.filter((x) => x.type !== 'lineup.bench')) await notify(e);

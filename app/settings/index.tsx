@@ -1,5 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import * as Clipboard from 'expo-clipboard';
 import { Alert, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { Button, Card, CardHead, Field, Label, MenuRow, Note, Screen } from '@/components/ui';
@@ -8,6 +8,7 @@ import { getAiSettings, type AiSettings } from '@/lib/ai/settings';
 import { ACCENTS, accentName, normalizeHex, tooDark, useAccent } from '@/lib/accent';
 import { alertsEnabled, alertsSupported, disableAlerts, enableAlerts } from '@/lib/alerts';
 import { setBackgroundRefresh } from '@/lib/background';
+import { familyEmail, onFamily } from '@/lib/family';
 import { describeNetworkFailure } from '@/lib/net-errors';
 import { RESPONSIBLE_GAMING, setOddsEnabled, useOddsEnabled } from '@/lib/odds';
 import { useFeed } from '@/lib/storage/feed';
@@ -37,6 +38,12 @@ export default function Settings() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [update, setUpdate] = useState<UpdateCheck | null>(null);
   const [hex, setHex] = useState('');
+  const [familySignedIn, setFamilySignedIn] = useState(false);
+  useEffect(() => {
+    const load = () => void familyEmail().then((e) => setFamilySignedIn(!!e));
+    load();
+    return onFamily(load);
+  }, []);
   const [alertsOn, setAlertsOn] = useState(false);
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -122,6 +129,15 @@ export default function Settings() {
 
   return (
     <Screen section="Settings" back right="none">
+      <Label>128BIT FAMILY</Label>
+      <MenuRow
+        icon={familySignedIn ? '●' : '○'}
+        name="128bit family account"
+        sub="One sign-in for every 128bit app. Wins and lineup fixes go to Tracker's timeline and 128bitlife."
+        value={familySignedIn ? 'Signed in' : 'Sign in'}
+        onPress={() => router.push('/settings/family')}
+      />
+
       <Label>128BIT LEAGUES · RUN YOUR OWN</Label>
       <MenuRow
         icon={signedIn.has('bit128') ? '●' : '○'}
