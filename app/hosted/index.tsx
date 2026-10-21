@@ -6,7 +6,9 @@ import {
   hostedConn,
   saveHostedConn,
   sendEmailCode,
+  createAccount,
   signInQuick,
+  signInWithPassword,
   signOutHosted,
   deleteHostedAccount,
   verifyEmailCode,
@@ -37,6 +39,7 @@ export default function Hosted() {
     url: '',
     key: '',
     email: '',
+    password: '',
     code: '',
     codeSent: false,
     teamName: '',
@@ -133,6 +136,35 @@ export default function Hosted() {
         <Text style={st.title}>Sign in</Text>
         <Text style={st.body}>{onBuiltIn ? 'One account for all your 128BIT leagues.' : `Project: ${conn.url.replace(/^https:\/\//, '')}`}</Text>
         {error ? <Note tone="error">{error}</Note> : null}
+        <Card>
+          <CardHead title="128BIT ACCOUNT" note="email + password" />
+          <Text style={st.body}>The same account as your other 128bit apps. No email to wait for.</Text>
+          <Field label="EMAIL" value={f.email} onChangeText={set('email')} keyboardType="email-address" autoCapitalize="none" placeholder="you@example.com" />
+          <Field label="PASSWORD" value={f.password} onChangeText={set('password')} secureTextEntry autoCapitalize="none" />
+          <Button
+            label="SIGN IN"
+            busy={busy === 'pw'}
+            onPress={() =>
+              run('pw', async () => {
+                if (!f.email.includes('@') || !f.password) throw new Error('Enter your email and password.');
+                await signInWithPassword(f.email, f.password);
+                load();
+              })
+            }
+          />
+          <Button
+            label="NEW HERE? CREATE ACCOUNT"
+            kind="ghost"
+            busy={busy === 'new'}
+            onPress={() =>
+              run('new', async () => {
+                if (!f.email.includes('@') || f.password.length < 6) throw new Error('Enter your email and a password of at least 6 characters.');
+                if (await createAccount(f.email, f.password)) load();
+                else throw new Error('Account made. Open the confirmation email on this phone — its link brings you back here signed in. Then use SIGN IN from now on.');
+              })
+            }
+          />
+        </Card>
         <Card>
           <CardHead title="QUICK" note="this phone only" />
           <Text style={st.body}>No email. Your team stays on this phone — switching phones later means a new account.</Text>

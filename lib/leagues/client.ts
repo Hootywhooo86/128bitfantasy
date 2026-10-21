@@ -75,6 +75,9 @@ export function sbMessage(e: unknown): string {
   if (/expired|invalid/i.test(m) && /token|otp|link/i.test(m)) {
     return 'That code or link has expired or was already used (opening the link uses it up). Tap EMAIL ME A CODE for a new one, and paste the link here without opening it.';
   }
+  if (/invalid login credentials/i.test(m)) return 'That email and password don\'t match a 128bit account. Use the password from your other 128bit apps.';
+  if (/user already registered/i.test(m)) return 'There\'s already a 128bit account with that email — tap SIGN IN instead.';
+  if (/password should be|weak password/i.test(m)) return 'Pick a longer password (at least 6 characters).';
   if (/rate limit/i.test(m)) return 'Supabase is limiting emails right now (the free email service sends only a few an hour). Try quick sign-in, or wait and try again.';
   return m;
 }
@@ -168,6 +171,24 @@ export async function verifyEmailCode(email: string, code: string): Promise<void
   }
   const sb = await hosted();
   must(await sb.auth.verifyOtp({ email: email.trim(), token: digits, type: 'email' }));
+}
+
+/** Your 128bit account: the same email and password as the other 128bit apps on this project. */
+export async function signInWithPassword(email: string, password: string): Promise<void> {
+  const sb = await hosted();
+  const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+  if (error) throw new Error(sbMessage(error));
+}
+
+/**
+ * A new 128bit account. Returns false when the project wants the email
+ * confirmed first (the email's link then opens this app).
+ */
+export async function createAccount(email: string, password: string): Promise<boolean> {
+  const sb = await hosted();
+  const { data, error } = await sb.auth.signUp({ email: email.trim(), password, options: { emailRedirectTo: AUTH_REDIRECT } });
+  if (error) throw new Error(sbMessage(error));
+  return !!data.session;
 }
 
 /** Who's signed in, in words. */
