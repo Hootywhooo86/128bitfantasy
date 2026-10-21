@@ -1,5 +1,12 @@
 # Changelog
 
+## Sign in with your 128bit account
+
+- **128BIT LEAGUES** signs in with the same email and password as the other 128bit apps. No email to wait for.
+- Emailed sign-in links open the app instead of a dead `localhost:3000` page (set Supabase's Site URL to `bitfantasy://auth`).
+- The code box also takes a pasted sign-in link, or the address of the page a link opened.
+- `supabase/schema.sql` pins its helper functions' search path and keeps membership checks from signed-out callers.
+
 ## Bench alerts — every sport, every provider
 
 - **"Bench: Zach Hyman plays 7:00 PM"** — a notification when a bench player's team plays today (this week in football) while a spot they fit sits idle: empty, held by a starter with no game or on a bye, or held by someone ruled out. Several at once arrive as one notification per league; each player alerts once per game.
