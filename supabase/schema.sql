@@ -1236,3 +1236,18 @@ begin
     execute format('revoke all on function %I from public, anon, authenticated', f);
   end loop;
 end $$;
+
+-- Pin every helper to this schema (Supabase's security scan asks for it), and
+-- keep the membership checks away from signed-out callers.
+do $$
+declare f regprocedure;
+begin
+  for f in select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname in ('nominator', 'snake_team', 'roster_size', 'draft_team', 'slot_takes', 'draft_rounds',
+      'league_rounds', 'pick_owner', 'landing_slot', 'active_count', 'on_clock', 'recent_adds', 'pick_open', 'draft_needs', 'max_bid',
+      'put_player', 'check_lineup', 'drop_to_waivers', 'execute_trade', 'do_pick', 'lineup_moves') loop
+    execute format('alter function %s set search_path = public', f);
+  end loop;
+end $$;
+revoke execute on function is_member(uuid), my_team(uuid), is_commish(uuid) from public, anon;
+grant execute on function is_member(uuid), my_team(uuid), is_commish(uuid) to authenticated;
